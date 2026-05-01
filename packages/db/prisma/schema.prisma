@@ -8,10 +8,163 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ------------------------------------------------------
+// Users & Organizations (Multi-tenant Foundation)
+// ------------------------------------------------------
+
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String         @id @default(cuid())
+  email         String         @unique
+  password      String?        // Simple auth
+  name          String?
+  image         String?
+  isOnboarded   Boolean        @default(false)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  
+  organizations Organization[] @relation("OrganizationUsers")
+  ownedOrgs     Organization[] @relation("OrganizationOwner")
+}
+
+model Organization {
+  id           String   @id @default(cuid())
+  name         String
+  slug         String   @unique
+  logo         String?
+  address      String?
+  currency     String   @default("INR") // Default to INR for India
+  gstin        String?  // Indian GST Number
+  stateCode    String?  // 2-digit state code for GST (e.g., '27' for Maharashtra)
+  
+  ownerId      String
+  owner        User     @relation("OrganizationOwner", fields: [ownerId], references: [id])
+  
+  users        User[]   @relation("OrganizationUsers")
+
+  customers    Customer[]
+  products     Product[]
+  invoices     Invoice[]
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// ------------------------------------------------------
+// Core Business Entities
+// ------------------------------------------------------
+
+model Customer {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  name           String
+  email          String?
+  phone          String?
+  address        String?
+  
+  gstin          String?      // Customer's GST Number
+  stateCode      String?      // Customer's state code
+  isRegistered   Boolean      @default(false)
+  
+  invoices       Invoice[]
+
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Product {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  name           String
+  description    String?
+  price          Float
+  hsnCode        String?      // HSN/SAC code
+  taxRate        Float        @default(18) // Default GST rate
+  
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+// ------------------------------------------------------
+// Invoicing
+// ------------------------------------------------------
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+model Invoice {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  customerId     String
+  customer       Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  
+  invoiceNumber  String
+  issueDate      DateTime     @default(now())
+  dueDate        DateTime
+  
+  placeOfSupply  String?      // State code where the supply is happening
+  
+  status         InvoiceStatus @default(DRAFT)
+  
+  subTotal       Float
+  cgstTotal      Float         @default(0)
+  sgstTotal      Float         @default(0)
+  igstTotal      Float         @default(0)
+  total          Float
+  
+  notes          String?
+  
+  items          InvoiceItem[]
+  payments       Payment[]
+
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, invoiceNumber])
+}
+
+model InvoiceItem {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  
+  description String
+  hsnCode     String?
+  quantity    Int
+  unitPrice   Float
+  
+  taxRate     Float    @default(0) // Total GST % for this item
+  cgstAmount  Float    @default(0)
+  sgstAmount  Float    @default(0)
+  igstAmount  Float    @default(0)
+  
+  total       Float
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Payment {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  
+  amount      Float
+  paymentDate DateTime @default(now())
+  method      String?  // e.g., "Bank Transfer", "Credit Card", "Cash"
+  notes       String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }

@@ -1,0 +1,90 @@
+.tableContainer {
+  background-color: var(--bg-primary);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.table th {
+  background-color: var(--bg-secondary);
+  padding: 1rem 1.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-light);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.table td {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.table tr:hover td {
+  background-color: var(--bg-secondary);
+}
+
+.invoiceId {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.amount {
+  font-weight: 600;
+}
+
+.emptyCell {
+  text-align: center;
+  padding: 3rem !important;
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+.status {
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  display: inline-block;
+}
+
+.draft {
+  background-color: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.sent {
+  background-color: #dbeafe;
+  color: #1e40af;
+}
+
+.paid {
+  background-color: #d1fae5;
+  color: #065f46;
+}
+
+.overdue {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
+.cancelled {
+  background-color: #f3f4f6;
+  color: #374151;
+  text-decoration: line-through;
+}
