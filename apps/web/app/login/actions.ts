@@ -4,7 +4,7 @@ import { cookies } from 'next/headers';
 import { prisma } from '@repo/db';
 import { redirect } from 'next/navigation';
 
-export async function loginOrRegister(formData: FormData) {
+export async function loginOrRegister(_prevState: unknown, formData: FormData) {
   const email = formData.get('email') as string;
   const password = formData.get('password') as string;
   

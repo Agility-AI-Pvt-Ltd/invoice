@@ -40,18 +40,22 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    // Resolve Customer (Find by ID, or Create new)
-    let customer = await prisma.customer.findUnique({
-      where: { id: customerNameOrId }
-    }).catch(() => null);
+    // Resolve Customer: try by ID first, then by exact name within org, then create
+    let customer =
+      (await prisma.customer.findFirst({
+        where: { id: customerNameOrId, organizationId: organization.id }
+      }).catch(() => null)) ??
+      (await prisma.customer.findFirst({
+        where: { name: customerNameOrId, organizationId: organization.id }
+      }).catch(() => null));
 
     if (!customer) {
-      // Create new customer on the fly
+      // Brand new customer typed by hand
       customer = await prisma.customer.create({
         data: {
           organizationId: organization.id,
           name: customerNameOrId,
-          stateCode: customerStateCode || organization.stateCode, // default to intra-state if not provided
+          stateCode: customerStateCode || organization.stateCode,
           isRegistered: false,
         }
       });

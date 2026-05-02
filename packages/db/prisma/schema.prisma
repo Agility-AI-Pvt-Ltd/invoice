@@ -41,9 +41,13 @@ model Organization {
   
   users        User[]   @relation("OrganizationUsers")
 
+  defaultTemplate String   @default("modern")
+  whatsappNumber  String?
+
   customers    Customer[]
   products     Product[]
   invoices     Invoice[]
+  recurringInvoices RecurringInvoice[]
 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -68,6 +72,7 @@ model Customer {
   isRegistered   Boolean      @default(false)
   
   invoices       Invoice[]
+  recurringInvoices RecurringInvoice[]
 
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
@@ -168,3 +173,60 @@ model Payment {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+// ------------------------------------------------------
+// Recurring Invoices
+// ------------------------------------------------------
+
+enum RecurringInterval {
+  WEEKLY
+  MONTHLY
+  YEARLY
+}
+
+model RecurringInvoice {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  customerId     String
+  customer       Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  
+  interval       RecurringInterval
+  nextIssueDate  DateTime
+  active         Boolean      @default(true)
+  
+  subTotal       Float
+  cgstTotal      Float         @default(0)
+  sgstTotal      Float         @default(0)
+  igstTotal      Float         @default(0)
+  total          Float
+  
+  notes          String?
+  
+  items          RecurringInvoiceItem[]
+
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model RecurringInvoiceItem {
+  id                 String   @id @default(cuid())
+  recurringInvoiceId String
+  recurringInvoice   RecurringInvoice  @relation(fields: [recurringInvoiceId], references: [id], onDelete: Cascade)
+  
+  description String
+  hsnCode     String?
+  quantity    Int
+  unitPrice   Float
+  
+  taxRate     Float    @default(0)
+  cgstAmount  Float    @default(0)
+  sgstAmount  Float    @default(0)
+  igstAmount  Float    @default(0)
+  
+  total       Float
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

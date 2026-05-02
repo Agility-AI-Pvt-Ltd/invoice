@@ -4,7 +4,7 @@ import { prisma } from '@repo/db';
 import { redirect } from 'next/navigation';
 import { getSession } from '../../lib/auth';
 
-export async function completeOnboarding(formData: FormData) {
+export async function completeOnboarding(_prevState: unknown, formData: FormData) {
   const user = await getSession();
   if (!user) return { error: 'Not authenticated' };
 
@@ -37,5 +37,5 @@ export async function completeOnboarding(formData: FormData) {
     data: { isOnboarded: true }
   });
   
-  redirect('/');
+  redirect('/dashboard');
 }
