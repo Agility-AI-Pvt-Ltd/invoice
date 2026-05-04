@@ -22,7 +22,8 @@ const GlobalStyles = () => (
     .hero-root {
       font-family: 'DM Sans', sans-serif;
       background: linear-gradient(135deg, #fdfcff 0%, #f4f7ff 40%, #fefaff 100%);
-      min-height: 100vh;
+      height: 100%;
+      width: 100%;
       display: flex;
       flex-direction: column;
       position: relative;

@@ -97,7 +97,7 @@ const INVS: InvDef[] = [
 ];
 
 const STATUS_C: Record<Status, [string, string]> = {
-  paid:    ["#e6faf0", "#00875a"],
+  paid: ["#e6faf0", "#00875a"],
   pending: ["#fff7e6", "#d48a00"],
   overdue: ["#fff0f0", "#cc3333"],
 };
@@ -159,25 +159,25 @@ function InvCard({ inv, p, index }: { inv: InvDef; p: MotionValue<number>; index
     [0, START, START + 0.12, ASSORT_START, ASSORT_END, CLOUD_START, CLOUD_END],
     ["50%", "50%", inv.left, inv.left, "50%", "50%", "50%"]
   );
-  
+
   const y = useTransform(
     p,
     [0, START, START + 0.12, ASSORT_START, ASSORT_END, CLOUD_START, CLOUD_END],
     ["50%", "50%", inv.top, inv.top, "40%", "40%", "-20%"]
   );
-  
+
   const scale = useTransform(
     p,
     [0, START, START + 0.12, ASSORT_START, ASSORT_END, CLOUD_START, CLOUD_END],
     [0, 0.4, inv.sc, inv.sc, 0.72, 0.72, 0.3]
   );
-  
+
   const rotate = useTransform(
     p,
     [0, START, START + 0.12, ASSORT_START, ASSORT_END],
     [0, 0, inv.rot, inv.rot, (index - (INVS.length / 2)) * 4]
   );
-  
+
   const opacity = useTransform(
     p,
     [0, START, START + 0.05, CLOUD_START, CLOUD_END],
@@ -319,23 +319,31 @@ export default function TypewriterSection() {
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end end"] });
   const p = useSpring(scrollYProgress, { stiffness: 60, damping: 20, restDelta: 0.001 });
 
-  const sectionOp  = useTransform(p, [0.95, 1.0], [1, 0]);
-  const headingOp  = useTransform(p, [0, 0.04, 0.20, 0.30], [1, 1, 1, 0]);
-  const headingY   = useTransform(p, [0, 0.30], [0, -30]);
-  const twY        = useTransform(p, [0, 0.08, 0.70, 0.80], [120, 0, 0, 120]);
-  const twOp       = useTransform(p, [0, 0.06, 0.70, 0.80], [0, 1, 1, 0]);
-  const twScale    = useTransform(p, [0, 0.80], [1, 0.85]);
-  const hintOp     = useTransform(p, [0, 0.05, 0.12], [1, 1, 0]);
+  const sectionOp = useTransform(p, [0, 1], [1, 1]); // always visible — never fades out
+  const headingOp = useTransform(p, [0, 0.04, 0.20, 0.30], [1, 1, 1, 0]);
+  const headingY = useTransform(p, [0, 0.30], [0, -30]);
+  const twY = useTransform(p, [0, 0.08, 0.70, 0.80], [120, 0, 0, 120]);
+  const twOp = useTransform(p, [0, 0.06, 0.70, 0.80], [0, 1, 1, 0]);
+  const twScale = useTransform(p, [0, 0.80], [1, 0.85]);
+  const hintOp = useTransform(p, [0, 0.05, 0.12], [1, 1, 0]);
 
   const cloudShow = useTransform(p, [0.72, 0.82], [0, 1]);
   const cloudY = useTransform(p, [0.72, 0.82], [-60, 0]);
   const cloudScale = useTransform(p, [0.72, 0.82], [0.9, 1]);
 
+  // Feature texts — appear one-by-one after heading fades out (p 0.30 → 0.70)
+  const feat1Op = useTransform(p, [0.28, 0.33, 0.40, 0.44], [0, 1, 1, 0]);
+  const feat1Y = useTransform(p, [0.28, 0.33, 0.40, 0.44], [20, 0, 0, -20]);
+  const feat2Op = useTransform(p, [0.44, 0.49, 0.56, 0.60], [0, 1, 1, 0]);
+  const feat2Y = useTransform(p, [0.44, 0.49, 0.56, 0.60], [20, 0, 0, -20]);
+  const feat3Op = useTransform(p, [0.60, 0.65, 0.68, 0.72], [0, 1, 1, 0]);
+  const feat3Y = useTransform(p, [0.60, 0.65, 0.68, 0.72], [20, 0, 0, -20]);
+
   return (
     <div ref={ref} style={{ height: "400vh", position: "relative" }}>
       <Fonts />
       <motion.div style={{
-        position: "sticky", top: 0, height: "100vh", overflow: "hidden",
+        position: "sticky", top: 30, height: "calc(100vh - 10px)", overflow: "hidden",
         background: "linear-gradient(135deg, #f8f7ff 0%, #edf5ff 40%, #fff0f7 70%, #fffaf5 100%)",
         opacity: sectionOp, zIndex: 10,
         display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
@@ -359,19 +367,51 @@ export default function TypewriterSection() {
         }}>
           <CloudVisual />
           <div style={{ position: "absolute", top: "50%", textAlign: "center", width: "100%", zIndex: 51 }}>
-             <div style={{ display: "inline-flex", alignItems: "center", gap: 12, background: "rgba(255,255,255,0.9)", backdropFilter: "blur(12px)", border: "1px solid rgba(79,53,210,0.15)", borderRadius: 100, padding: "10px 24px", boxShadow: "0 15px 35px rgba(0,0,0,0.06)" }}>
-                <div style={{ width: 14, height: 14, background: "#4f35d2", borderRadius: "50%" }} className="pulse-dot" />
-                <span style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontSize: 18, fontWeight: 700, color: "#1a1340" }}>Smart Cloud Services</span>
-             </div>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 12, background: "rgba(255,255,255,0.9)", backdropFilter: "blur(12px)", border: "1px solid rgba(79,53,210,0.15)", borderRadius: 100, padding: "10px 24px", boxShadow: "0 15px 35px rgba(0,0,0,0.06)" }}>
+              <div style={{ width: 14, height: 14, background: "#4f35d2", borderRadius: "50%" }} className="pulse-dot" />
+              <span style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontSize: 18, fontWeight: 700, color: "#1a1340" }}>Smart Cloud Services</span>
+            </div>
           </div>
         </motion.div>
 
-        <motion.div style={{ position: "relative", zIndex: 10, textAlign: "center", marginBottom: 40, opacity: headingOp, y: headingY }}>
-          <h1 style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontSize: "clamp(2.8rem, 5.5vw, 4.5rem)", fontWeight: 800, color: "#1a1340", letterSpacing: "-0.03em", lineHeight: 1.05, margin: "0 0 16px" }}>
-            Billing, <span style={{ WebkitTextStroke: "1.5px #4f35d2", WebkitTextFillColor: "transparent" }}>reimagined</span>
-          </h1>
-          <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "1rem", color: "#8b87aa", margin: 0, fontWeight: 450, maxWidth: 550 }}>Every keypress transforms your chaos into clarity with our AI-powered cloud ledger.</p>
-        </motion.div>
+        {/* Heading wrapper — all heading-position elements share the same absolute slot */}
+        <div style={{ position: "relative", zIndex: 10, marginBottom: 40, width: "100%", display: "flex", justifyContent: "center" }}>
+
+          {/* Original heading */}
+          <motion.div style={{ position: "absolute", top: 0, left: 0, right: 0, textAlign: "center", opacity: headingOp, y: headingY, pointerEvents: "none" }}>
+            <h1 style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontSize: "clamp(2.8rem, 5.5vw, 4.5rem)", fontWeight: 800, color: "#1a1340", letterSpacing: "-0.03em", lineHeight: 1.05, margin: "0 0 16px" }}>
+              Billing, <span style={{ WebkitTextStroke: "1.5px #4f35d2", WebkitTextFillColor: "transparent" }}>reimagined</span>
+            </h1>
+            <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "1rem", color: "#8b87aa", margin: "0 auto", fontWeight: 450, maxWidth: 550, textAlign: "center" }}>Every keypress transforms your chaos into clarity with our AI-powered cloud ledger.</p>
+          </motion.div>
+
+          {/* Feature 1 */}
+          <motion.div style={{ position: "absolute", top: 0, left: 0, right: 0, textAlign: "center", opacity: feat1Op, y: feat1Y, pointerEvents: "none" }}>
+            <p style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontSize: "clamp(2.6rem, 5.5vw, 4.2rem)", fontWeight: 800, color: "#1a1340", letterSpacing: "-0.03em", lineHeight: 1.1, margin: 0, maxWidth: 700, marginLeft: "auto", marginRight: "auto" }}>
+              Generate professional invoices <span style={{ WebkitTextStroke: "1.5px #4f35d2", WebkitTextFillColor: "transparent" }}>in seconds</span> with customizable templates
+            </p>
+          </motion.div>
+
+          {/* Feature 2 */}
+          <motion.div style={{ position: "absolute", top: 0, left: 0, right: 0, textAlign: "center", opacity: feat2Op, y: feat2Y, pointerEvents: "none" }}>
+            <p style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontSize: "clamp(2.8rem, 5.5vw, 4.5rem)", fontWeight: 800, color: "#1a1340", letterSpacing: "-0.03em", lineHeight: 1.1, margin: 0, maxWidth: 700, marginLeft: "auto", marginRight: "auto" }}>
+              Send invoices <span style={{ WebkitTextStroke: "1.5px #4f35d2", WebkitTextFillColor: "transparent" }}>directly via email</span> with payment links
+            </p>
+          </motion.div>
+
+          {/* Feature 3 */}
+          <motion.div style={{ position: "absolute", top: 0, left: 0, right: 0, textAlign: "center", opacity: feat3Op, y: feat3Y, pointerEvents: "none" }}>
+            <p style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontSize: "clamp(2.8rem, 5.5vw, 4.5rem)", fontWeight: 800, color: "#1a1340", letterSpacing: "-0.03em", lineHeight: 1.1, margin: 0, maxWidth: 700, marginLeft: "auto", marginRight: "auto" }}>
+              Support <span style={{ WebkitTextStroke: "1.5px #4f35d2", WebkitTextFillColor: "transparent" }}>multiple payment methods</span> for faster collections
+            </p>
+          </motion.div>
+
+          {/* Invisible spacer so the flex parent maintains height equivalent to the heading */}
+          <div style={{ visibility: "hidden", pointerEvents: "none" }}>
+            <h1 style={{ fontFamily: "'Bricolage Grotesque', sans-serif", fontSize: "clamp(2.8rem, 5.5vw, 4.5rem)", fontWeight: 800, lineHeight: 1.05, margin: "0 0 16px" }}>Billing, reimagined</h1>
+            <p style={{ fontSize: "1rem", margin: 0 }}>placeholder</p>
+          </div>
+        </div>
 
         <div style={{ position: "relative", width: "100vw", height: "65vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
           {INVS.map((inv, i) => <InvCard key={inv.id} inv={inv} p={p} index={i} />)}
