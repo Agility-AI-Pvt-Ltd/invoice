@@ -5,18 +5,22 @@ import TypewriterSection from "@repo/ui/TypewriterSection";
 export default async function Home() {
   return (
     <div style={{ position: "relative", overflowX: "hidden" }}>
-      {/* 1 - Hero with clouds */}
+      {/* 1 - Hero: stays pinned while TypewriterSection scrolls over it */}
       <div
         style={{
-          position: "relative",
-          zIndex: 2,
+          position: "sticky",
+          top: 0,
+          height: "100vh",
+          zIndex: 1,
         }}
       >
         <HeroSection logoSrc="/assets/invoicely.png" />
       </div>
 
-      {/* 2 - Scroll-driven typewriter + scattered invoices (320vh) */}
-      <TypewriterSection />
+      {/* 2 - Slides up over the hero as the user scrolls (parallax card effect) */}
+      <div style={{ position: "relative", zIndex: 2 }}>
+        <TypewriterSection />
+      </div>
 
       {/* 3 - How It Works slides over the hero on scroll */}
       <div

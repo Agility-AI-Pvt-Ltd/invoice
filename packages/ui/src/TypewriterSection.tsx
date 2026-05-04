@@ -339,6 +339,8 @@ export default function TypewriterSection() {
         background: "linear-gradient(135deg, #f8f7ff 0%, #edf5ff 40%, #fff0f7 70%, #fffaf5 100%)",
         opacity: sectionOp, zIndex: 10,
         display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+        borderRadius: "24px 24px 0 0",
+        boxShadow: "0 -24px 80px rgba(79,53,210,0.18)",
       }}>
         <div style={{
           position: "absolute", inset: 0, pointerEvents: "none",

@@ -1,5 +1,7 @@
 "use client";
 
+import { useRef, useState } from "react";
+
 // Inline styles as a style tag component
 const GlobalStyles = () => (
   <style>{`
@@ -24,6 +26,34 @@ const GlobalStyles = () => (
       display: flex;
       flex-direction: column;
       position: relative;
+      overflow: hidden;
+    }
+
+    .hero-video {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: 0;
+      opacity: 0;
+      transition: opacity 1.4s ease;
+    }
+
+    .hero-video.ready {
+      opacity: 1;
+    }
+
+    .hero-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(253, 252, 255, 0.78);
+      backdrop-filter: blur(1px);
+      z-index: 1;
     }
 
     /* ---- NAV ---- */
@@ -32,19 +62,18 @@ const GlobalStyles = () => (
       align-items: center;
       justify-content: space-between;
       padding: 16px 32px;
-      margin: 20px auto 0;
+      margin: 0px auto 0;
       width: min(1100px, calc(100% - 40px));
       position: relative;
-      z-index: 100;
+      z-index: 10;
     }
 
     .nav-logo {
       display: flex;
       align-items: center;
-      gap: 10px;
       font-family: 'Bricolage Grotesque', sans-serif;
       font-weight: 800;
-      font-size: 1.25rem;
+      font-size: 1.85rem;
       color: var(--text-dark);
       text-decoration: none;
       letter-spacing: -0.02em;
@@ -104,6 +133,12 @@ const GlobalStyles = () => (
       text-align: center;
       padding: 40px 24px 100px;
       position: relative;
+      z-index: 2;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(30px); }
+      to   { opacity: 1; transform: translateY(0);    }
     }
 
     .hero-heading {
@@ -115,6 +150,8 @@ const GlobalStyles = () => (
       letter-spacing: -0.05em;
       max-width: 900px;
       margin-bottom: 32px;
+      opacity: 0;
+      animation: fadeUp 0.8s ease forwards 0.1s;
     }
 
     .hero-heading em {
@@ -129,12 +166,16 @@ const GlobalStyles = () => (
       margin: 0 auto 56px;
       line-height: 1.5;
       font-weight: 400;
+      opacity: 0;
+      animation: fadeUp 0.8s ease forwards 0.3s;
     }
 
     .hero-cta-group {
       display: flex;
       align-items: center;
       gap: 16px;
+      opacity: 0;
+      animation: fadeUp 0.8s ease forwards 0.5s;
     }
 
     .btn-main {
@@ -196,13 +237,34 @@ const GlobalStyles = () => (
 );
 
 export default function HeroSection({ logoSrc }: { logoSrc?: string }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [videoReady, setVideoReady] = useState(false);
+
+  function handleCanPlay() {
+    const video = videoRef.current;
+    if (!video) return;
+    video.playbackRate = 0.7;
+    setVideoReady(true);
+  }
+
   return (
     <>
       <GlobalStyles />
       <div className="hero-root">
-        <div className="bg-glow" />
+        <video
+          ref={videoRef}
+          className={`hero-video${videoReady ? " ready" : ""}`}
+          src="/assets/herobg.mp4"
+          autoPlay
+          loop
+          muted
+          playsInline
+          onCanPlay={handleCanPlay}
+        />
+        <div className="hero-overlay" />
 
         {/* Navbar */}
+
         <nav className="nav">
           <a href="#" className="nav-logo">
             {logoSrc ? (
@@ -221,7 +283,13 @@ export default function HeroSection({ logoSrc }: { logoSrc?: string }) {
             ))}
           </ul>
 
-          <a href="/login" className="btn-nav" style={{ textDecoration: 'none' }}>Sign In</a>
+          <a
+            href="/login"
+            className="btn-nav"
+            style={{ textDecoration: "none" }}
+          >
+            Sign In
+          </a>
         </nav>
 
         {/* Hero content */}
