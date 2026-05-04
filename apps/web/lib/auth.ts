@@ -2,31 +2,28 @@ import { cookies } from 'next/headers';
 import { prisma } from '@repo/db';
 import { redirect } from 'next/navigation';
 
-export async function getSession() {
+async function getUserId() {
   const cookieStore = await cookies();
-  const userId = cookieStore.get('userId')?.value;
-  
+  return cookieStore.get('userId')?.value ?? null;
+}
+
+export async function getSession() {
+  const userId = await getUserId();
   if (!userId) return null;
-  
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    include: {
-      ownedOrgs: true
-    }
-  });
-  
-  return user;
+  return prisma.user.findUnique({ where: { id: userId } });
 }
 
 export async function requireAuth() {
-  const user = await getSession();
-  if (!user) {
-    redirect('/login');
-  }
-  
-  if (!user.isOnboarded) {
-    redirect('/onboarding');
-  }
-  
+  const userId = await getUserId();
+  if (!userId) redirect('/login');
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { ownedOrgs: true },
+  });
+
+  if (!user) redirect('/login');
+  if (!user.isOnboarded) redirect('/onboarding');
+
   return user;
 }

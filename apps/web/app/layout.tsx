@@ -14,7 +14,7 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
-  title: "InvoiceHQ | Professional Invoicing SaaS",
+  title: "Invoicely | Professional Invoicing SaaS",
   description: "Modern invoicing for professional businesses",
 };
 

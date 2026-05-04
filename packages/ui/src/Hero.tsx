@@ -1,7 +1,5 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-
 // Inline styles as a style tag component
 const GlobalStyles = () => (
   <style>{`
@@ -53,13 +51,13 @@ const GlobalStyles = () => (
     }
 
     .nav-logo-icon {
-      width: 30px;
-      height: 30px;
-      background: var(--indigo);
-      border-radius: 8px;
+      width: 80px;
+      height: 80px;
+      border-radius: 7px;
       display: flex;
       align-items: center;
       justify-content: center;
+      object-fit: contain;
     }
 
     .nav-links {
@@ -197,31 +195,33 @@ const GlobalStyles = () => (
   `}</style>
 );
 
-export default function HeroSection() {
+export default function HeroSection({ logoSrc }: { logoSrc?: string }) {
   return (
     <>
       <GlobalStyles />
       <div className="hero-root">
         <div className="bg-glow" />
-        
+
         {/* Navbar */}
         <nav className="nav">
           <a href="#" className="nav-logo">
-            <div className="nav-logo-icon">
-              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                <path d="M4 4L14 14M4 14L14 4" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
-              </svg>
-            </div>
+            {logoSrc ? (
+              <img className="nav-logo-icon" src={logoSrc} alt="" />
+            ) : (
+              <div className="nav-logo-icon" aria-hidden="true" />
+            )}
             Invoicely
           </a>
 
           <ul className="nav-links">
             {["Product", "Features", "Pricing"].map((item) => (
-              <li key={item}><a href="#">{item}</a></li>
+              <li key={item}>
+                <a href="#">{item}</a>
+              </li>
             ))}
           </ul>
 
-          <button className="btn-nav">Sign In</button>
+          <a href="/login" className="btn-nav" style={{ textDecoration: 'none' }}>Sign In</a>
         </nav>
 
         {/* Hero content */}
@@ -233,8 +233,8 @@ export default function HeroSection() {
           </h1>
 
           <p className="hero-sub">
-            The minimalist platform to create, send, and automate professional invoices
-            without the bloat of traditional accounting software.
+            The minimalist platform to create, send, and automate professional
+            invoices without the bloat of traditional accounting software.
           </p>
 
           <div className="hero-cta-group">
@@ -246,5 +246,3 @@ export default function HeroSection() {
     </>
   );
 }
-
-
