@@ -1,15 +1,24 @@
 import { requireAuth } from '../../../lib/auth';
 import { prisma } from '@repo/db';
 import Link from 'next/link';
-import { FileText } from 'lucide-react';
+import { 
+  FileText, 
+  Plus, 
+  Search, 
+  Filter, 
+  ArrowUpRight,
+  MoreHorizontal,
+  Mail,
+  Download
+} from 'lucide-react';
 
 const STATUS_STYLES: Record<string, string> = {
-  DRAFT: "bg-gray-100 text-gray-600",
-  SENT: "bg-blue-50 text-blue-700",
-  PARTIALLY_PAID: "bg-amber-50 text-amber-700",
-  PAID: "bg-green-50 text-green-700",
-  OVERDUE: "bg-red-50 text-red-700",
-  CANCELLED: "bg-gray-100 text-gray-400",
+  DRAFT: "bg-secondary text-muted-foreground border-border",
+  SENT: "bg-blue-500/10 text-blue-600 border-blue-500/20",
+  PARTIALLY_PAID: "bg-amber-500/10 text-amber-600 border-amber-500/20",
+  PAID: "bg-green-500/10 text-green-600 border-green-500/20",
+  OVERDUE: "bg-destructive/10 text-destructive border-destructive/20",
+  CANCELLED: "bg-muted text-muted-foreground border-border opacity-60",
 };
 
 export default async function InvoicesPage() {
@@ -23,65 +32,123 @@ export default async function InvoicesPage() {
   });
 
   return (
-    <div className="p-6 max-w-5xl mx-auto w-full">
-      <div className="flex justify-between items-center mb-6">
+    <div className="p-8 max-w-6xl mx-auto w-full space-y-6">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-lg font-semibold text-gray-900">Invoices</h1>
-          <p className="text-sm text-gray-500">{invoices.length} total</p>
+          <h1 className="text-3xl font-bold tracking-tight heading-display">Invoices</h1>
+          <p className="text-muted-foreground mt-1 tracking-tight">Manage and track your outgoing bills</p>
         </div>
         <Link
           href="/dashboard/invoices/new"
-          className="px-3 py-2 bg-gray-900 text-white text-sm font-medium rounded-md hover:bg-gray-700 transition-colors"
+          className="flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground font-bold rounded-xl hover:opacity-90 transition-all shadow-lg shadow-primary/20 active:scale-95"
         >
-          + New Invoice
+          <Plus className="w-5 h-5" />
+          Create Invoice
         </Link>
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50 border-b border-gray-100">
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Invoice</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Customer</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Date</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Due</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">Amount</th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {invoices.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="px-4 py-16 text-center">
-                  <FileText className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                  <p className="text-sm text-gray-500">No invoices yet.</p>
-                  <Link href="/dashboard/invoices/new" className="text-sm text-gray-700 underline underline-offset-2 mt-1 inline-block">
-                    Create your first invoice
-                  </Link>
-                </td>
+      {/* Toolbar */}
+      <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+        <div className="relative w-full md:w-96 group">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+          <input 
+            placeholder="Search by invoice # or customer..." 
+            className="w-full bg-card border border-border rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+          />
+        </div>
+        <div className="flex items-center gap-2 w-full md:w-auto">
+          <button className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-card border border-border rounded-xl text-sm font-semibold hover:bg-secondary transition-all">
+            <Filter className="w-4 h-4" />
+            Filter
+          </button>
+          <button className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-card border border-border rounded-xl text-sm font-semibold hover:bg-secondary transition-all">
+            <Download className="w-4 h-4" />
+            Export
+          </button>
+        </div>
+      </div>
+
+      {/* Table Container */}
+      <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden animate-in">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-secondary/30 text-muted-foreground text-left border-b border-border">
+                <th className="px-6 py-4 font-bold uppercase tracking-widest text-[10px]">Invoice</th>
+                <th className="px-6 py-4 font-bold uppercase tracking-widest text-[10px]">Customer</th>
+                <th className="px-6 py-4 font-bold uppercase tracking-widest text-[10px]">Issue Date</th>
+                <th className="px-6 py-4 font-bold uppercase tracking-widest text-[10px]">Amount</th>
+                <th className="px-6 py-4 font-bold uppercase tracking-widest text-[10px] text-center">Status</th>
+                <th className="px-6 py-4"></th>
               </tr>
-            ) : invoices.map((inv) => (
-              <tr key={inv.id} className="hover:bg-gray-50 transition-colors">
-                <td className="px-4 py-3 font-medium text-gray-900">{inv.invoiceNumber}</td>
-                <td className="px-4 py-3 text-gray-600">{inv.customer.name}</td>
-                <td className="px-4 py-3 text-gray-500">{new Date(inv.issueDate).toLocaleDateString('en-IN')}</td>
-                <td className="px-4 py-3 text-gray-500">{new Date(inv.dueDate).toLocaleDateString('en-IN')}</td>
-                <td className="px-4 py-3 text-right font-medium text-gray-900">₹{inv.total.toFixed(2)}</td>
-                <td className="px-4 py-3 text-center">
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_STYLES[inv.status] || STATUS_STYLES.DRAFT}`}>
-                    {inv.status.replace('_', ' ')}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <Link href={`/dashboard/invoices/${inv.id}`} className="text-xs text-gray-500 hover:text-gray-900 transition-colors">
-                    View →
-                  </Link>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {invoices.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-24 text-center">
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="w-12 h-12 bg-secondary rounded-2xl flex items-center justify-center">
+                        <FileText className="w-6 h-6 text-muted-foreground" />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-sm font-bold">No invoices found</p>
+                        <p className="text-xs text-muted-foreground">Start by creating your first professional invoice.</p>
+                      </div>
+                      <Link href="/dashboard/invoices/new" className="text-xs font-bold text-primary hover:underline mt-2">
+                        Create Invoice →
+                      </Link>
+                    </div>
+                  </td>
+                </tr>
+              ) : invoices.map((inv) => (
+                <tr key={inv.id} className="hover:bg-secondary/30 transition-all group cursor-pointer" onClick={() => {}}>
+                  <td className="px-6 py-5">
+                    <span className="font-bold text-foreground group-hover:text-primary transition-colors">#{inv.invoiceNumber}</span>
+                  </td>
+                  <td className="px-6 py-5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary uppercase">
+                        {inv.customer.name.slice(0, 2)}
+                      </div>
+                      <span className="font-semibold text-muted-foreground group-hover:text-foreground transition-colors">{inv.customer.name}</span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-5">
+                    <span className="text-muted-foreground font-medium">{new Date(inv.issueDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                  </td>
+                  <td className="px-6 py-5">
+                    <span className="font-bold text-foreground">₹{inv.total.toLocaleString('en-IN')}</span>
+                  </td>
+                  <td className="px-6 py-5 text-center">
+                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${STATUS_STYLES[inv.status] || STATUS_STYLES.DRAFT}`}>
+                      {inv.status.replace('_', ' ')}
+                    </span>
+                  </td>
+                  <td className="px-6 py-5 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <Link 
+                        href={`/dashboard/invoices/${inv.id}`}
+                        className="p-2 hover:bg-secondary rounded-lg transition-colors text-muted-foreground hover:text-foreground"
+                      >
+                        <ArrowUpRight className="w-4 h-4" />
+                      </Link>
+                      <button className="p-2 hover:bg-secondary rounded-lg transition-colors text-muted-foreground hover:text-foreground">
+                        <MoreHorizontal className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      
+      {/* Footer Info */}
+      <div className="flex items-center justify-between text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em] px-2">
+        <p>{invoices.length} Invoices Recorded</p>
+        <p>Sorted by Recent</p>
       </div>
     </div>
   );

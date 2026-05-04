@@ -15,7 +15,7 @@ datasource db {
 model User {
   id            String         @id @default(cuid())
   email         String         @unique
-  password      String?        // Simple auth
+  password      String?
   name          String?
   image         String?
   isOnboarded   Boolean        @default(false)
@@ -32,22 +32,34 @@ model Organization {
   slug         String   @unique
   logo         String?
   address      String?
-  currency     String   @default("INR") // Default to INR for India
-  gstin        String?  // Indian GST Number
-  stateCode    String?  // 2-digit state code for GST (e.g., '27' for Maharashtra)
+  currency     String   @default("INR")
+  gstin        String?
+  stateCode    String?
+  phone        String?
+  website      String?
+  bankName     String?
+  bankAccount  String?
+  bankIfsc     String?
   
   ownerId      String
   owner        User     @relation("OrganizationOwner", fields: [ownerId], references: [id])
-  
   users        User[]   @relation("OrganizationUsers")
 
-  defaultTemplate String   @default("modern")
-  whatsappNumber  String?
+  defaultTemplate  String   @default("modern")
+  invoicePrefix    String   @default("INV")
+  defaultDueDays   Int      @default(30)
+  whatsappNumber   String?
 
-  customers    Customer[]
-  products     Product[]
-  invoices     Invoice[]
+  customers         Customer[]
+  products          Product[]
+  invoices          Invoice[]
   recurringInvoices RecurringInvoice[]
+  paymentGateways   PaymentGatewayConfig[]
+  emailConfig       EmailConfig?
+  whatsAppConfig    WhatsAppConfig?
+  activityLogs      ActivityLog[]
+  contacts          Contact[]
+  deals             Deal[]
 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -66,16 +78,19 @@ model Customer {
   email          String?
   phone          String?
   address        String?
-  
-  gstin          String?      // Customer's GST Number
-  stateCode      String?      // Customer's state code
+  gstin          String?
+  stateCode      String?
   isRegistered   Boolean      @default(false)
   
-  invoices       Invoice[]
+  invoices          Invoice[]
   recurringInvoices RecurringInvoice[]
+  contacts          Contact[]
+  deals             Deal[]
 
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId, name])
 }
 
 model Product {
@@ -86,11 +101,14 @@ model Product {
   name           String
   description    String?
   price          Float
-  hsnCode        String?      // HSN/SAC code
-  taxRate        Float        @default(18) // Default GST rate
+  hsnCode        String?
+  taxRate        Float        @default(18)
+  unit           String?
   
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId, name])
 }
 
 // ------------------------------------------------------
@@ -117,8 +135,7 @@ model Invoice {
   invoiceNumber  String
   issueDate      DateTime     @default(now())
   dueDate        DateTime
-  
-  placeOfSupply  String?      // State code where the supply is happening
+  placeOfSupply  String?
   
   status         InvoiceStatus @default(DRAFT)
   
@@ -132,11 +149,15 @@ model Invoice {
   
   items          InvoiceItem[]
   payments       Payment[]
+  paymentLinks   PaymentLink[]
 
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
   @@unique([organizationId, invoiceNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, dueDate])
+  @@index([customerId])
 }
 
 model InvoiceItem {
@@ -146,14 +167,14 @@ model InvoiceItem {
   
   description String
   hsnCode     String?
-  quantity    Int
+  quantity    Float
   unitPrice   Float
+  unit        String?
   
-  taxRate     Float    @default(0) // Total GST % for this item
+  taxRate     Float    @default(0)
   cgstAmount  Float    @default(0)
   sgstAmount  Float    @default(0)
   igstAmount  Float    @default(0)
-  
   total       Float
   
   createdAt   DateTime @default(now())
@@ -167,11 +188,147 @@ model Payment {
   
   amount      Float
   paymentDate DateTime @default(now())
-  method      String?  // e.g., "Bank Transfer", "Credit Card", "Cash"
+  method      String?
   notes       String?
+  gatewayProvider  String?
+  gatewayPaymentId String?
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([invoiceId])
+}
+
+// ------------------------------------------------------
+// Payment Gateways
+// ------------------------------------------------------
+
+enum PaymentProvider {
+  RAZORPAY
+  PAYTM
+  STRIPE
+  CASHFREE
+}
+
+enum PaymentLinkStatus {
+  PENDING
+  PAID
+  EXPIRED
+  CANCELLED
+}
+
+model PaymentGatewayConfig {
+  id             String          @id @default(cuid())
+  organizationId String
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  provider       PaymentProvider
+  keyId          String
+  keySecret      String
+  webhookSecret  String?
+  isActive       Boolean         @default(true)
+  
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@unique([organizationId, provider])
+}
+
+model PaymentLink {
+  id             String            @id @default(cuid())
+  invoiceId      String
+  invoice        Invoice           @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  
+  provider       PaymentProvider
+  externalId     String
+  shortUrl       String
+  upiQrData      String?
+  status         PaymentLinkStatus @default(PENDING)
+  
+  expiresAt      DateTime?
+  paidAt         DateTime?
+  
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([externalId])
+  @@index([invoiceId])
+}
+
+// ------------------------------------------------------
+// Email Configuration
+// ------------------------------------------------------
+
+enum EmailProvider {
+  RESEND
+  SMTP
+  SENDGRID
+}
+
+model EmailConfig {
+  id             String        @id @default(cuid())
+  organizationId String        @unique
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  provider       EmailProvider @default(RESEND)
+  apiKey         String?
+  smtpHost       String?
+  smtpPort       Int?
+  smtpUser       String?
+  smtpPass       String?
+  fromName       String        @default("Billing")
+  fromEmail      String        @default("billing@example.com")
+  isVerified     Boolean       @default(false)
+  
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+// ------------------------------------------------------
+// WhatsApp Configuration
+// ------------------------------------------------------
+
+enum WhatsAppProvider {
+  TWILIO
+  WATI
+  META_CLOUD
+}
+
+model WhatsAppConfig {
+  id             String           @id @default(cuid())
+  organizationId String           @unique
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  provider       WhatsAppProvider @default(TWILIO)
+  apiKey         String
+  apiSecret      String?
+  phoneNumberId  String?
+  businessNumber String
+  isActive       Boolean          @default(true)
+  
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+}
+
+// ------------------------------------------------------
+// Audit Log
+// ------------------------------------------------------
+
+model ActivityLog {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  userId         String?
+  entity         String
+  entityId       String
+  action         String
+  meta           Json?
+  
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([entityId])
 }
 
 // ------------------------------------------------------
@@ -181,6 +338,7 @@ model Payment {
 enum RecurringInterval {
   WEEKLY
   MONTHLY
+  QUARTERLY
   YEARLY
 }
 
@@ -192,18 +350,19 @@ model RecurringInvoice {
   customerId     String
   customer       Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
   
+  title          String?
   interval       RecurringInterval
   nextIssueDate  DateTime
+  endDate        DateTime?
   active         Boolean      @default(true)
   
   subTotal       Float
-  cgstTotal      Float         @default(0)
-  sgstTotal      Float         @default(0)
-  igstTotal      Float         @default(0)
+  cgstTotal      Float        @default(0)
+  sgstTotal      Float        @default(0)
+  igstTotal      Float        @default(0)
   total          Float
   
   notes          String?
-  
   items          RecurringInvoiceItem[]
 
   createdAt      DateTime     @default(now())
@@ -211,22 +370,69 @@ model RecurringInvoice {
 }
 
 model RecurringInvoiceItem {
-  id                 String   @id @default(cuid())
+  id                 String           @id @default(cuid())
   recurringInvoiceId String
-  recurringInvoice   RecurringInvoice  @relation(fields: [recurringInvoiceId], references: [id], onDelete: Cascade)
+  recurringInvoice   RecurringInvoice @relation(fields: [recurringInvoiceId], references: [id], onDelete: Cascade)
   
   description String
   hsnCode     String?
-  quantity    Int
+  quantity    Float
   unitPrice   Float
+  unit        String?
   
   taxRate     Float    @default(0)
   cgstAmount  Float    @default(0)
   sgstAmount  Float    @default(0)
   igstAmount  Float    @default(0)
-  
   total       Float
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-}
+}
+
+// ------------------------------------------------------
+// CRM Foundation (Future Module — DB-ready now)
+// ------------------------------------------------------
+
+model Contact {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  customerId     String?
+  customer       Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  
+  name           String
+  email          String?
+  phone          String?
+  role           String?
+  notes          String?
+  lastContactedAt DateTime?
+  
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+}
+
+model Deal {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  customerId     String
+  customer       Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  
+  title          String
+  value          Float?
+  currency       String       @default("INR")
+  stage          String       @default("Lead")
+  expectedCloseAt DateTime?
+  closedAt       DateTime?
+  notes          String?
+  
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId, stage])
+}

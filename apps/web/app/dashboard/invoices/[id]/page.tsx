@@ -2,7 +2,7 @@ import { requireAuth } from '../../../../lib/auth';
 import { prisma } from '@repo/db';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Pencil } from 'lucide-react';
 import InvoiceActions from './InvoiceActions';
 
 const fmt = (n: number) => `₹${n.toFixed(2)}`;
@@ -27,10 +27,21 @@ export default async function InvoiceViewPage({ params }: { params: Promise<{ id
     <div className="p-6 max-w-4xl mx-auto w-full">
       {/* Top bar */}
       <div className="flex items-center justify-between mb-6">
-        <Link href="/dashboard/invoices" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors">
-          <ArrowLeft className="w-4 h-4" />
-          All Invoices
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link href="/dashboard/invoices" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors">
+            <ArrowLeft className="w-4 h-4" />
+            All Invoices
+          </Link>
+          {(invoice.status === 'DRAFT' || invoice.status === 'SENT') && (
+            <Link
+              href={`/dashboard/invoices/${invoice.id}/edit`}
+              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-900 border border-gray-200 px-2.5 py-1 rounded-md transition-colors"
+            >
+              <Pencil className="w-3 h-3" />
+              Edit
+            </Link>
+          )}
+        </div>
         <InvoiceActions
           invoiceId={invoice.id}
           status={invoice.status as any}
