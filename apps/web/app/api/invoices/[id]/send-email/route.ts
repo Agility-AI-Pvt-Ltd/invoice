@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@repo/db";
 import { getSession } from "../../../../../lib/auth";
+import { renderToBuffer } from "@react-pdf/renderer";
+import { buildPDF } from "../../../../../lib/pdf-templates";
 import nodemailer from "nodemailer";
 import { Resend } from "resend";
+import { checkAuthRateLimit } from "../../../../../lib/ratelimit";
 
 export async function POST(
   req: Request,
@@ -11,10 +14,19 @@ export async function POST(
   try {
     const { id } = await params;
     const user = await getSession();
-    if (!user || user.ownedOrgs.length === 0) {
+    if (!user || !user.ownedOrgs || user.ownedOrgs.length === 0) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const organizationId = user.ownedOrgs[0].id;
+
+    // Rate limit email sending per organization
+    const { allowed, retryAfter } = await checkAuthRateLimit(`email:${organizationId}`);
+    if (!allowed) {
+      return NextResponse.json(
+        { error: `Too many email attempts. Please try again in ${retryAfter} seconds.` },
+        { status: 429 }
+      );
+    }
 
     const invoice = await prisma.invoice.findUnique({
       where: { id, organizationId },
@@ -34,10 +46,20 @@ export async function POST(
         { status: 400 }
       );
     }
+    if (!emailCfg.fromEmail || emailCfg.fromEmail === "billing@example.com") {
+      return NextResponse.json(
+        { error: "Set a valid From Email in Settings → Email Delivery before sending." },
+        { status: 400 }
+      );
+    }
 
     const paymentLink = invoice.paymentLinks[0]?.shortUrl;
     const html = buildEmailHtml(invoice, paymentLink);
-    const subject = `Invoice ${invoice.invoiceNumber} from ${invoice.organization.name} — ₹${invoice.total.toFixed(2)}`;
+    const subject = `Invoice ${invoice.invoiceNumber} from ${invoice.organization.name} — ₹${Number(invoice.total).toFixed(2)}`;
+
+    // Generate PDF for attachment
+    const pdfDoc = buildPDF(invoice as any, (invoice.organization as any).defaultTemplate || "modern");
+    const pdfBuffer = await renderToBuffer(pdfDoc);
 
     if (emailCfg.provider === "RESEND" && emailCfg.apiKey) {
       const resend = new Resend(emailCfg.apiKey);
@@ -46,6 +68,12 @@ export async function POST(
         to: [toEmail],
         subject,
         html,
+        attachments: [
+          {
+            filename: `${invoice.invoiceNumber}.pdf`,
+            content: pdfBuffer,
+          },
+        ],
       });
     } else if (emailCfg.provider === "SMTP" && emailCfg.smtpHost) {
       const transporter = nodemailer.createTransport({
@@ -57,6 +85,12 @@ export async function POST(
       await transporter.sendMail({
         from: `${emailCfg.fromName} <${emailCfg.fromEmail}>`,
         to: toEmail, subject, html,
+        attachments: [
+          {
+            filename: `${invoice.invoiceNumber}.pdf`,
+            content: pdfBuffer,
+          },
+        ],
       });
     } else if (emailCfg.provider === "SENDGRID" && emailCfg.apiKey) {
       const res = await fetch("https://api.sendgrid.com/v3/mail/send", {
@@ -119,7 +153,7 @@ function buildEmailHtml(invoice: any, paymentLink?: string): string {
         </div>
         <div style="display:flex;justify-content:space-between;border-top:1px solid #e5e7eb;padding-top:12px;margin-top:4px;">
           <span style="font-size:15px;font-weight:700;color:#111827;">Total Due</span>
-          <span style="font-size:18px;font-weight:800;color:#111827;">₹${invoice.total.toFixed(2)}</span>
+          <span style="font-size:18px;font-weight:800;color:#111827;">₹${Number(invoice.total).toFixed(2)}</span>
         </div>
       </div>
       ${paymentLink ? `

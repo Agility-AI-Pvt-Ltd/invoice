@@ -209,7 +209,7 @@ export default function InvoiceForm({
   const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
 
   const [invoiceNumber, setInvoiceNumber] = useState(existingData?.invoiceNumber ?? defaultInvoiceNumber);
-  const [issueDate, setIssueDate] = useState(existingData?.issueDate ?? new Date().toISOString().split("T")[0]);
+  const [issueDate, setIssueDate] = useState(existingData?.issueDate ?? new Date().toLocaleDateString("en-CA")); // YYYY-MM-DD
   const [dueDate, setDueDate] = useState(existingData?.dueDate ?? "");
   const [notes, setNotes] = useState(existingData?.notes ?? "");
 

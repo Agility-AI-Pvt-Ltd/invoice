@@ -39,97 +39,105 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing payment_link id" }, { status: 400 });
     }
 
-    // Find our PaymentLink record by externalId
+    // 1. Find the link to identify the organization
     const pl = await prisma.paymentLink.findFirst({
       where: { externalId: paymentLinkId },
       include: { invoice: { include: { organization: true } } },
     });
 
     if (!pl) {
-      // Could be from another system — silently OK
-      return NextResponse.json({ received: true });
+      return NextResponse.json({ received: true, note: "Link not found in our system" });
     }
 
-    // Verify HMAC against the org's webhook secret
-    const orgId = pl.invoice.organizationId;
+    // 2. Load and verify Signature
+    const organizationId = pl.invoice.organizationId;
     const gatewayCfg = await prisma.paymentGatewayConfig.findUnique({
-      where: { organizationId_provider: { organizationId: orgId, provider: "RAZORPAY" } },
+      where: { organizationId_provider: { organizationId, provider: "RAZORPAY" } },
     });
 
-    // Always require webhook secret — never skip verification
     if (!gatewayCfg?.webhookSecret) {
-      console.warn("Razorpay webhook: no webhookSecret configured for org", orgId, "— rejecting");
-      return NextResponse.json({ error: "Webhook secret not configured for this organization" }, { status: 401 });
+      console.error("Razorpay webhook: No secret configured for org", organizationId);
+      return NextResponse.json({ error: "Organization not configured for webhooks" }, { status: 401 });
     }
+
     const expectedSig = createHmac("sha256", gatewayCfg.webhookSecret)
       .update(rawBody)
       .digest("hex");
+
     if (expectedSig !== signature) {
-      console.warn("Razorpay webhook signature mismatch for org", orgId);
-      return NextResponse.json({ error: "Signature mismatch" }, { status: 401 });
+      console.warn("Razorpay webhook signature mismatch for org", organizationId);
+      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
     }
 
-    // Idempotency: don't process the same link twice
-    if (pl.status === "PAID") {
-      return NextResponse.json({ received: true, skipped: "already_paid" });
-    }
+    // 3. Atomic processing in a transaction
+    try {
+      await prisma.$transaction(async (tx) => {
+        // Attempt to "claim" this payment link — ensure it hasn't been processed
+        const link = await tx.paymentLink.findUnique({
+          where: { id: pl.id },
+        });
 
-    const invoice = pl.invoice;
-    const existingPayments = await prisma.payment.aggregate({
-      where: { invoiceId: invoice.id },
-      _sum: { amount: true },
-    });
-    const alreadyPaid = existingPayments._sum.amount ?? 0;
-    const totalPaid = alreadyPaid + amount;
-    const newStatus = totalPaid >= invoice.total ? "PAID" : "PARTIALLY_PAID";
+        if (!link || link.status !== "PENDING") {
+          return; // Already processed or changed
+        }
 
-    // Atomic update
-    await prisma.$transaction([
-      prisma.payment.create({
-        data: {
-          invoiceId: invoice.id,
-          amount,
-          method: "Online (Razorpay)",
-          notes: `Payment ID: ${razorpayPaymentId}`,
-          gatewayProvider: "RAZORPAY",
-          gatewayPaymentId: razorpayPaymentId,
-          paymentDate: new Date(),
-        },
-      }),
-      prisma.invoice.update({
-        where: { id: invoice.id },
-        data: { status: newStatus as any },
-      }),
-      prisma.paymentLink.update({
-        where: { id: pl.id },
-        data: { status: "PAID", paidAt: new Date() },
-      }),
-      prisma.activityLog.create({
-        data: {
-          organizationId: orgId,
-          entity: "Invoice",
-          entityId: invoice.id,
-          action: "PAYMENT_RECEIVED",
-          meta: {
+        // Update link status
+        await tx.paymentLink.update({
+          where: { id: pl.id },
+          data: { status: "PAID", paidAt: new Date() },
+        });
+
+        const invoice = pl.invoice;
+        
+        // Calculate new status
+        const payments = await tx.payment.aggregate({
+          where: { invoiceId: invoice.id },
+          _sum: { amount: true },
+        });
+        const alreadyPaid = Number(payments._sum.amount ?? 0);
+        const totalPaid = alreadyPaid + amount;
+        const newStatus = totalPaid >= Number(invoice.total) - 0.01 ? "PAID" : "PARTIALLY_PAID";
+
+        // Record payment
+        await tx.payment.create({
+          data: {
+            invoiceId: invoice.id,
             amount,
-            method: "Razorpay",
+            method: "ONLINE",
+            notes: `Razorpay Link: ${paymentLinkId}`,
+            gatewayProvider: "RAZORPAY",
             gatewayPaymentId: razorpayPaymentId,
-            newStatus,
+            paymentDate: new Date(),
           },
-        },
-      }),
-    ]);
+        });
 
-    console.log(`✅ Razorpay payment processed: Invoice ${invoice.id} → ${newStatus}`);
-    return NextResponse.json({ received: true, invoiceId: invoice.id, newStatus });
+        // Update invoice
+        await tx.invoice.update({
+          where: { id: invoice.id },
+          data: { status: newStatus as any },
+        });
+
+        // Log activity
+        await tx.activityLog.create({
+          data: {
+            organizationId,
+            entity: "Invoice",
+            entityId: invoice.id,
+            action: "PAYMENT_RECEIVED",
+            meta: { amount, gatewayPaymentId: razorpayPaymentId, newStatus },
+          },
+        });
+      });
+    } catch (err) {
+      console.error("Atomic webhook processing failed:", err);
+      return NextResponse.json({ error: "Internal processing error" }, { status: 500 });
+    }
+
+    return NextResponse.json({ received: true });
   }
 
-  // ── Handle payment.captured (direct payment, no link) ────────────
-  if (event === "payment.captured") {
-    // For direct payments, we match by amount + customer notes if provided
-    // This is a best-effort match — payment_link.paid is more reliable
-    return NextResponse.json({ received: true, event: "payment.captured", note: "Use payment_link.paid for reliable tracking" });
-  }
-
-  return NextResponse.json({ received: true, event, note: "Unhandled event" });
+  // ── Handle other events ───────────────────────────────────────────
+  // We still want to verify signature for all events to prevent spoofing
+  // even if we don't process them yet.
+  return NextResponse.json({ received: true, note: "Event ignored after verification" });
 }

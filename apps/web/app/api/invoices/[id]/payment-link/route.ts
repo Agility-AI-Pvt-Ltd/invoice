@@ -10,7 +10,7 @@ export async function POST(
   try {
     const { id } = await params;
     const user = await getSession();
-    if (!user || user.ownedOrgs.length === 0) {
+    if (!user || !user.ownedOrgs || user.ownedOrgs.length === 0) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const organizationId = user.ownedOrgs[0].id;
@@ -49,8 +49,8 @@ export async function POST(
       where: { invoiceId: id },
       _sum: { amount: true },
     });
-    const alreadyPaid = payments._sum.amount ?? 0;
-    const remaining = invoice.total - alreadyPaid;
+    const alreadyPaid = Number(payments._sum.amount ?? 0);
+    const remaining = Number(invoice.total) - alreadyPaid;
     if (remaining <= 0) {
       return NextResponse.json({ error: "No outstanding balance" }, { status: 400 });
     }
@@ -80,8 +80,11 @@ export async function POST(
       callback_method: "get",
     });
 
-    // Build UPI QR data string (standard UPI deep link)
-    const upiQrData = `upi://pay?pa=${encodeURIComponent(organizationId)}&pn=${encodeURIComponent(invoice.organization.name)}&am=${remaining.toFixed(2)}&tn=${encodeURIComponent(`Invoice ${invoice.invoiceNumber}`)}&cu=INR`;
+    // Build UPI QR data string — only when org has a configured UPI ID
+    const upiId = (invoice.organization as any).upiId as string | null;
+    const upiQrData = upiId
+      ? `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(invoice.organization.name)}&am=${remaining.toFixed(2)}&tn=${encodeURIComponent(`Invoice ${invoice.invoiceNumber}`)}&cu=INR`
+      : null;
 
     // Save to DB
     await prisma.$transaction([

@@ -5,7 +5,7 @@ import { getSession } from '../../../lib/auth';
 export async function POST(request: Request) {
   try {
     const user = await getSession();
-    if (!user || user.ownedOrgs.length === 0) {
+    if (!user || !user.ownedOrgs || user.ownedOrgs.length === 0) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     const organizationId = user.ownedOrgs[0].id;

@@ -139,14 +139,14 @@ model Invoice {
   
   status         InvoiceStatus @default(DRAFT)
   
-  subTotal       Float
-  cgstTotal      Float         @default(0)
-  sgstTotal      Float         @default(0)
-  igstTotal      Float         @default(0)
-  total          Float
-  
+  subTotal       Decimal       @db.Decimal(12, 2)
+  cgstTotal      Decimal       @default(0) @db.Decimal(12, 2)
+  sgstTotal      Decimal       @default(0) @db.Decimal(12, 2)
+  igstTotal      Decimal       @default(0) @db.Decimal(12, 2)
+  total          Decimal       @db.Decimal(12, 2)
+
   notes          String?
-  
+
   items          InvoiceItem[]
   payments       Payment[]
   paymentLinks   PaymentLink[]
@@ -171,12 +171,12 @@ model InvoiceItem {
   unitPrice   Float
   unit        String?
   
-  taxRate     Float    @default(0)
-  cgstAmount  Float    @default(0)
-  sgstAmount  Float    @default(0)
-  igstAmount  Float    @default(0)
-  total       Float
-  
+  taxRate     Decimal  @default(0) @db.Decimal(5, 2)
+  cgstAmount  Decimal  @default(0) @db.Decimal(12, 2)
+  sgstAmount  Decimal  @default(0) @db.Decimal(12, 2)
+  igstAmount  Decimal  @default(0) @db.Decimal(12, 2)
+  total       Decimal  @db.Decimal(12, 2)
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -185,8 +185,8 @@ model Payment {
   id          String   @id @default(cuid())
   invoiceId   String
   invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  
-  amount      Float
+
+  amount      Decimal  @db.Decimal(12, 2)
   paymentDate DateTime @default(now())
   method      String?
   notes       String?
@@ -356,12 +356,12 @@ model RecurringInvoice {
   endDate        DateTime?
   active         Boolean      @default(true)
   
-  subTotal       Float
-  cgstTotal      Float        @default(0)
-  sgstTotal      Float        @default(0)
-  igstTotal      Float        @default(0)
-  total          Float
-  
+  subTotal       Decimal      @db.Decimal(12, 2)
+  cgstTotal      Decimal      @default(0) @db.Decimal(12, 2)
+  sgstTotal      Decimal      @default(0) @db.Decimal(12, 2)
+  igstTotal      Decimal      @default(0) @db.Decimal(12, 2)
+  total          Decimal      @db.Decimal(12, 2)
+
   notes          String?
   items          RecurringInvoiceItem[]
 
@@ -380,12 +380,12 @@ model RecurringInvoiceItem {
   unitPrice   Float
   unit        String?
   
-  taxRate     Float    @default(0)
-  cgstAmount  Float    @default(0)
-  sgstAmount  Float    @default(0)
-  igstAmount  Float    @default(0)
-  total       Float
-  
+  taxRate     Decimal  @default(0) @db.Decimal(5, 2)
+  cgstAmount  Decimal  @default(0) @db.Decimal(12, 2)
+  sgstAmount  Decimal  @default(0) @db.Decimal(12, 2)
+  igstAmount  Decimal  @default(0) @db.Decimal(12, 2)
+  total       Decimal  @db.Decimal(12, 2)
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }

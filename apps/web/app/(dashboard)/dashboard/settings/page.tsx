@@ -1,62 +1,59 @@
 import { requireAuth } from '../../../../lib/auth';
 import { prisma } from '@repo/db';
 import { redirect } from 'next/navigation';
+import { headers } from 'next/headers';
 import {
   Building2, CreditCard, Mail, MessageSquare,
   Save, ChevronRight, CheckCircle, AlertCircle, Zap
 } from 'lucide-react';
 
-const inputCls = "w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 bg-white placeholder:text-gray-400";
-const labelCls = "block text-xs font-medium text-gray-700 mb-1";
-const sectionHeaderCls = "px-6 py-4 border-b border-gray-100 flex items-center gap-3";
+const inputCls = "w-full border border-border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-background text-foreground placeholder:text-muted-foreground/40 transition-all";
+const labelCls = "block text-[10px] font-bold text-muted-foreground uppercase tracking-[0.15em] mb-1.5 ml-1";
+const sectionHeaderCls = "px-6 py-5 border-b border-border/50 flex items-center gap-4 bg-secondary/10";
 
 function SectionCard({ icon, title, description, badge, children }: {
   icon: React.ReactNode; title: string; description: string; badge?: string; children: React.ReactNode;
 }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+    <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm shadow-black/5">
       <div className={sectionHeaderCls}>
-        <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
+        <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center flex-shrink-0 text-primary">
           {icon}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
+            <h2 className="text-sm font-bold text-foreground uppercase tracking-tight">{title}</h2>
             {badge && (
-              <span className="text-xs font-medium px-2 py-0.5 bg-amber-50 text-amber-700 rounded-full border border-amber-200">
+              <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-500/10 text-amber-600 rounded-full border border-amber-500/20 uppercase tracking-wider">
                 {badge}
               </span>
             )}
           </div>
-          <p className="text-xs text-gray-500 mt-0.5">{description}</p>
+          <p className="text-xs text-muted-foreground/70 mt-0.5">{description}</p>
         </div>
       </div>
-      <div className="p-6">{children}</div>
+      <div className="p-6 md:p-8">{children}</div>
     </div>
   );
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div>
+    <div className="space-y-1">
       <label className={labelCls}>{label}</label>
       {children}
     </div>
   );
 }
 
-function StatusBadge({ active, label }: { active: boolean; label: string }) {
-  return (
-    <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full ${
-      active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'
-    }`}>
-      {active ? <CheckCircle className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
-      {label}
-    </span>
-  );
-}
-
 export default async function SettingsPage() {
+  const headersList = await headers();
+  const host = headersList.get("host");
+  const isLocal = host?.includes("localhost");
+  const webhookUrl = isLocal 
+    ? `http://${host}/api/webhooks/razorpay` 
+    : `https://www.agilityaiinvoicely.com/api/webhooks/razorpay`;
+
   const user = await requireAuth();
   const orgId = user.ownedOrgs[0]?.id;
 
@@ -70,7 +67,6 @@ export default async function SettingsPage() {
   if (!org) return null;
 
   const razorpay = pgConfigs.find(p => p.provider === 'RAZORPAY');
-  const paytm = pgConfigs.find(p => p.provider === 'PAYTM');
 
   async function saveGeneral(fd: FormData) {
     "use server";
@@ -171,21 +167,21 @@ export default async function SettingsPage() {
   }
 
   return (
-    <div className="p-6 max-w-3xl mx-auto w-full">
-      <div className="mb-6">
-        <h1 className="text-lg font-semibold text-gray-900">Settings</h1>
-        <p className="text-sm text-gray-500">Manage your business profile and integrations</p>
+    <div className="p-8 max-w-4xl mx-auto w-full space-y-8 pb-20 animate-in fade-in duration-700">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight heading-display text-foreground">Settings</h1>
+        <p className="text-muted-foreground mt-1.5">Manage your business profile, invoice design, and automated integrations.</p>
       </div>
 
-      <div className="space-y-5">
+      <div className="space-y-8">
         {/* ── Business & Invoice Settings ── */}
         <form action={saveGeneral}>
           <SectionCard
-            icon={<Building2 className="w-4 h-4 text-gray-600" />}
+            icon={<Building2 className="w-5 h-5" />}
             title="Business & Invoice"
-            description="Your public business details and invoice defaults"
+            description="Your public business details and default settings for all new invoices."
           >
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Field label="Business Name *">
                 <input name="name" required defaultValue={org.name} className={inputCls} />
               </Field>
@@ -193,7 +189,7 @@ export default async function SettingsPage() {
                 <input name="gstin" defaultValue={org.gstin || ''} placeholder="27AAAAA0000A1Z5" className={inputCls} />
               </Field>
               <Field label="State Code">
-                <input name="stateCode" defaultValue={org.stateCode || ''} placeholder="27 for Maharashtra" className={inputCls} />
+                <input name="stateCode" defaultValue={org.stateCode || ''} placeholder="e.g. 27" className={inputCls} />
               </Field>
               <Field label="Phone">
                 <input name="phone" defaultValue={org.phone || ''} placeholder="+91 98765 43210" className={inputCls} />
@@ -205,9 +201,9 @@ export default async function SettingsPage() {
                 <input name="website" defaultValue={org.website || ''} placeholder="https://yourcompany.com" className={inputCls} />
               </Field>
 
-              <div className="md:col-span-2 pt-2 border-t border-gray-100">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Bank Details (for PDF)</p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="md:col-span-2 pt-4 border-t border-border/50">
+                <p className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-[0.2em] mb-4">Bank Details (Displayed on PDF)</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <Field label="Bank Name">
                     <input name="bankName" defaultValue={org.bankName || ''} placeholder="HDFC Bank" className={inputCls} />
                   </Field>
@@ -220,9 +216,9 @@ export default async function SettingsPage() {
                 </div>
               </div>
 
-              <div className="md:col-span-2 pt-2 border-t border-gray-100">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Invoice Defaults</p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="md:col-span-2 pt-4 border-t border-border/50">
+                <p className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-[0.2em] mb-4">Invoice Defaults</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <Field label="Invoice Prefix">
                     <input name="invoicePrefix" defaultValue={org.invoicePrefix || 'INV'} placeholder="INV" className={inputCls} />
                   </Field>
@@ -231,17 +227,18 @@ export default async function SettingsPage() {
                   </Field>
                   <Field label="Default Template">
                     <select name="defaultTemplate" defaultValue={org.defaultTemplate} className={inputCls}>
-                      <option value="modern">Modern</option>
-                      <option value="classic">Classic</option>
-                      <option value="minimal">Minimal</option>
+                      <option value="modern">Modern (Dark Header)</option>
+                      <option value="classic">Classic (Traditional)</option>
+                      <option value="minimal">Minimal (Clean)</option>
                     </select>
                   </Field>
                 </div>
               </div>
             </div>
-            <div className="flex justify-end mt-4 pt-4 border-t border-gray-100">
-              <button type="submit" className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-md hover:bg-gray-700 transition-colors">
-                <Save className="w-3.5 h-3.5" /> Save
+            <div className="flex justify-end mt-8 pt-6 border-t border-border/50">
+              <button type="submit" className="group flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground text-sm font-bold rounded-xl hover:opacity-90 transition-all shadow-lg shadow-primary/20 active:scale-95">
+                <Save className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                Save Business Profile
               </button>
             </div>
           </SectionCard>
@@ -250,80 +247,72 @@ export default async function SettingsPage() {
         {/* ── Razorpay ── */}
         <form action={saveRazorpay}>
           <SectionCard
-            icon={<CreditCard className="w-4 h-4 text-gray-600" />}
+            icon={<CreditCard className="w-5 h-5" />}
             title="Razorpay"
             description="Auto-track payments — when a customer pays via Razorpay, invoice status updates automatically"
             badge={razorpay ? undefined : "Not configured"}
           >
             {razorpay && (
-              <div className="flex items-center gap-2 mb-4 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+              <div className="flex items-center gap-2 mb-6 text-xs text-green-700 bg-green-500/10 border border-green-500/20 rounded-xl px-4 py-3">
                 <CheckCircle className="w-3.5 h-3.5" />
-                Connected · Key ID: {razorpay.keyId.slice(0, 8)}••••
+                <span className="font-semibold">Connected · Key ID: {razorpay.keyId.slice(0, 8)}••••</span>
               </div>
             )}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Field label="Key ID (rzp_live_••• or rzp_test_•••)">
-                <input name="razorpay_key_id" required placeholder="rzp_test_xxxxxxxxxx" defaultValue={razorpay?.keyId || ''} className={inputCls} />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Field label="Key ID (From Razorpay)">
+                <input name="razorpay_key_id" required placeholder="rzp_live_..." defaultValue={razorpay?.keyId || ''} className={inputCls} />
+                <p className="text-[9px] text-muted-foreground mt-1 ml-1">Example: rzp_live_xxxxxxxxxxxx (Not your email)</p>
               </Field>
               <Field label="Key Secret">
                 <input name="razorpay_key_secret" required type="password" placeholder="••••••••••••••••" defaultValue={razorpay?.keySecret || ''} className={inputCls} />
               </Field>
-              <Field label="Webhook Secret (for auto payment tracking)">
-                <input name="razorpay_webhook_secret" type="password" placeholder="From Razorpay Dashboard → Webhooks" defaultValue={razorpay?.webhookSecret || ''} className={inputCls} />
+              <Field label="Webhook Secret">
+                <input name="razorpay_webhook_secret" type="password" placeholder="e.g. inv_webhook_secure_123" defaultValue={razorpay?.webhookSecret || ''} className={inputCls} />
+                <p className="text-[9px] text-muted-foreground mt-1 ml-1 italic">Suggestion: Use a strong random string like "inv_sec_{Math.random().toString(36).slice(2, 10)}"</p>
               </Field>
               <div className="flex flex-col justify-end">
-                <p className="text-xs text-gray-500 leading-relaxed">
-                  Add webhook URL in Razorpay Dashboard:<br />
-                  <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded text-gray-700 break-all">
-                    https://yourdomain.com/api/webhooks/razorpay
-                  </code>
-                </p>
+                <div className="text-[10px] text-muted-foreground leading-relaxed bg-secondary/30 p-4 rounded-xl border border-border/50">
+                  <span className="font-bold uppercase tracking-wider block mb-2 opacity-50">Razorpay Webhook Setup:</span>
+                  <p className="mb-3 opacity-70">1. Go to Razorpay Dashboard → Settings → Webhooks</p>
+                  <p className="mb-3 opacity-70">2. Click 'Add New Webhook' and use the URL below:</p>
+                  <div className="bg-background border border-border rounded-lg p-2.5 flex items-center justify-between group/url">
+                    <code className="text-primary font-mono text-[11px] break-all select-all">
+                      {webhookUrl}
+                    </code>
+                  </div>
+                  <p className="mt-3 text-[9px] opacity-40 font-medium italic">Events: payment_link.paid, payment.captured</p>
+                </div>
               </div>
             </div>
-            <div className="flex justify-end mt-4 pt-4 border-t border-gray-100">
-              <button type="submit" className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-md hover:bg-gray-700 transition-colors">
-                <Save className="w-3.5 h-3.5" /> {razorpay ? 'Update' : 'Connect Razorpay'}
+            <div className="flex justify-end mt-8 pt-6 border-t border-border/50">
+              <button type="submit" className="group flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground text-sm font-bold rounded-xl hover:opacity-90 transition-all shadow-lg shadow-primary/20 active:scale-95">
+                <Save className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                {razorpay ? 'Update Configuration' : 'Connect Razorpay'}
               </button>
             </div>
           </SectionCard>
         </form>
 
-        {/* ── Paytm placeholder ── */}
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden opacity-60">
-          <div className={sectionHeaderCls}>
-            <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
-              <CreditCard className="w-4 h-4 text-gray-400" />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <h2 className="text-sm font-semibold text-gray-600">Paytm / Cashfree / Stripe</h2>
-                <span className="text-xs font-medium px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full border border-indigo-200">Coming soon</span>
-              </div>
-              <p className="text-xs text-gray-400 mt-0.5">More payment gateways will be added soon</p>
-            </div>
-          </div>
-        </div>
-
         {/* ── Email ── */}
         <form action={saveEmail}>
           <SectionCard
-            icon={<Mail className="w-4 h-4 text-gray-600" />}
+            icon={<Mail className="w-5 h-5" />}
             title="Email Delivery"
-            description="Send invoices and payment receipts directly via email"
+            description="Send invoices and payment receipts directly via professional email templates."
             badge={emailCfg ? undefined : "Not configured"}
           >
             {emailCfg && (
-              <div className="flex items-center gap-2 mb-4 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+              <div className="flex items-center gap-2 mb-6 text-xs text-green-700 bg-green-500/10 border border-green-500/20 rounded-xl px-4 py-3">
                 <CheckCircle className="w-3.5 h-3.5" />
-                Configured · From: {emailCfg.fromEmail} · Provider: {emailCfg.provider}
+                <span className="font-semibold">Configured · From: {emailCfg.fromEmail} · Provider: {emailCfg.provider}</span>
               </div>
             )}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Field label="Email Provider">
                 <select name="email_provider" defaultValue={emailCfg?.provider || 'RESEND'} className={inputCls}>
-                  <option value="RESEND">Resend (recommended)</option>
+                  <option value="RESEND">Resend (Highly Recommended)</option>
                   <option value="SENDGRID">SendGrid</option>
-                  <option value="SMTP">SMTP</option>
+                  <option value="SMTP">Custom SMTP</option>
                 </select>
               </Field>
               <Field label="API Key (Resend / SendGrid)">
@@ -335,27 +324,23 @@ export default async function SettingsPage() {
               <Field label="From Email">
                 <input name="from_email" type="email" placeholder="billing@yourcompany.com" defaultValue={emailCfg?.fromEmail || ''} className={inputCls} />
               </Field>
-              <div className="md:col-span-2">
-                <p className="text-xs text-gray-500 bg-gray-50 rounded-md px-3 py-2 border border-gray-200">
-                  <strong>SMTP:</strong> Fill Host, Port, User, Password below. Leave API Key blank.
-                </p>
+              
+              <div className="md:col-span-2 pt-4 border-t border-border/50">
+                <div className="p-4 bg-secondary/30 rounded-xl border border-border/50">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">SMTP Settings (Only for Custom SMTP)</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <Field label="Host"><input name="smtp_host" placeholder="smtp.gmail.com" defaultValue={emailCfg?.smtpHost || ''} className={inputCls} /></Field>
+                    <Field label="Port"><input name="smtp_port" type="number" placeholder="587" defaultValue={emailCfg?.smtpPort || ''} className={inputCls} /></Field>
+                    <Field label="User"><input name="smtp_user" placeholder="you@gmail.com" defaultValue={emailCfg?.smtpUser || ''} className={inputCls} /></Field>
+                    <Field label="Password"><input name="smtp_pass" type="password" placeholder="••••••••" defaultValue={emailCfg?.smtpPass || ''} className={inputCls} /></Field>
+                  </div>
+                </div>
               </div>
-              <Field label="SMTP Host">
-                <input name="smtp_host" placeholder="smtp.gmail.com" defaultValue={emailCfg?.smtpHost || ''} className={inputCls} />
-              </Field>
-              <Field label="SMTP Port">
-                <input name="smtp_port" type="number" placeholder="587" defaultValue={emailCfg?.smtpPort || ''} className={inputCls} />
-              </Field>
-              <Field label="SMTP User">
-                <input name="smtp_user" placeholder="you@gmail.com" defaultValue={emailCfg?.smtpUser || ''} className={inputCls} />
-              </Field>
-              <Field label="SMTP Password">
-                <input name="smtp_pass" type="password" placeholder="••••••••" defaultValue={emailCfg?.smtpPass || ''} className={inputCls} />
-              </Field>
             </div>
-            <div className="flex justify-end mt-4 pt-4 border-t border-gray-100">
-              <button type="submit" className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-md hover:bg-gray-700 transition-colors">
-                <Save className="w-3.5 h-3.5" /> {emailCfg ? 'Update' : 'Save Email Config'}
+            <div className="flex justify-end mt-8 pt-6 border-t border-border/50">
+              <button type="submit" className="group flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground text-sm font-bold rounded-xl hover:opacity-90 transition-all shadow-lg shadow-primary/20 active:scale-95">
+                <Save className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                {emailCfg ? 'Update Email Config' : 'Save Email Delivery'}
               </button>
             </div>
           </SectionCard>
@@ -364,21 +349,21 @@ export default async function SettingsPage() {
         {/* ── WhatsApp ── */}
         <form action={saveWhatsApp}>
           <SectionCard
-            icon={<MessageSquare className="w-4 h-4 text-gray-600" />}
+            icon={<MessageSquare className="w-5 h-5" />}
             title="WhatsApp Delivery"
-            description="Send invoices and payment links directly via WhatsApp"
+            description="Send invoices and payment links directly via WhatsApp Business API."
             badge={waConfig ? undefined : "Not configured"}
           >
             {waConfig && (
-              <div className="flex items-center gap-2 mb-4 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+              <div className="flex items-center gap-2 mb-6 text-xs text-green-700 bg-green-500/10 border border-green-500/20 rounded-xl px-4 py-3">
                 <CheckCircle className="w-3.5 h-3.5" />
-                Connected · Number: {waConfig.businessNumber} · Provider: {waConfig.provider}
+                <span className="font-semibold">Connected · Number: {waConfig.businessNumber}</span>
               </div>
             )}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Field label="Provider">
                 <select name="wa_provider" defaultValue={waConfig?.provider || 'TWILIO'} className={inputCls}>
-                  <option value="TWILIO">Twilio (easiest to set up)</option>
+                  <option value="TWILIO">Twilio</option>
                   <option value="WATI">WATI</option>
                   <option value="META_CLOUD">Meta Cloud API</option>
                 </select>
@@ -392,38 +377,42 @@ export default async function SettingsPage() {
               <Field label="Auth Token / API Secret">
                 <input name="wa_api_secret" type="password" placeholder="••••••••" defaultValue={waConfig?.apiSecret || ''} className={inputCls} />
               </Field>
-              <Field label="Phone Number ID (Meta Cloud API only)">
-                <input name="wa_phone_number_id" placeholder="From Meta Business Dashboard" defaultValue={waConfig?.phoneNumberId || ''} className={inputCls} />
+              <Field label="Phone Number ID (Meta Only)">
+                <input name="wa_phone_number_id" placeholder="From Meta Dashboard" defaultValue={waConfig?.phoneNumberId || ''} className={inputCls} />
               </Field>
             </div>
-            <div className="flex justify-end mt-4 pt-4 border-t border-gray-100">
-              <button type="submit" className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-md hover:bg-gray-700 transition-colors">
-                <Save className="w-3.5 h-3.5" /> {waConfig ? 'Update' : 'Save WhatsApp Config'}
+            <div className="flex justify-end mt-8 pt-6 border-t border-border/50">
+              <button type="submit" className="group flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground text-sm font-bold rounded-xl hover:opacity-90 transition-all shadow-lg shadow-primary/20 active:scale-95">
+                <Save className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                {waConfig ? 'Update WhatsApp' : 'Enable WhatsApp'}
               </button>
             </div>
           </SectionCard>
         </form>
 
         {/* ── MCP / API Access ── */}
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm relative group">
+          <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-transparent pointer-events-none" />
           <div className={sectionHeaderCls}>
-            <div className="w-8 h-8 bg-indigo-50 rounded-lg flex items-center justify-center flex-shrink-0">
-              <Zap className="w-4 h-4 text-indigo-600" />
+            <div className="w-10 h-10 bg-indigo-500/10 rounded-xl flex items-center justify-center flex-shrink-0 text-indigo-500">
+              <Zap className="w-5 h-5" />
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-2">
-                <h2 className="text-sm font-semibold text-gray-900">API & MCP Access</h2>
-                <span className="text-xs font-medium px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full border border-indigo-200">Coming soon</span>
+                <h2 className="text-sm font-bold text-foreground uppercase tracking-tight">API & MCP Access</h2>
+                <span className="text-[10px] font-bold px-2 py-0.5 bg-indigo-500/10 text-indigo-600 rounded-full border border-indigo-500/20 uppercase tracking-widest animate-pulse">Coming soon</span>
               </div>
-              <p className="text-xs text-gray-500 mt-0.5">Let AI agents create invoices, check payment status, and send reminders on your behalf</p>
+              <p className="text-xs text-muted-foreground/70 mt-0.5">Automate your finances with AI agents and custom workflows.</p>
             </div>
           </div>
-          <div className="p-6">
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm text-gray-600">
-              <p className="font-medium text-gray-900 mb-1">🤖 Coming: MCP Connectivity</p>
-              <p className="text-xs text-gray-500 leading-relaxed">
-                Once enabled, your AI assistant (Claude, GPT, Cursor) can directly:
-                create invoices, check who owes you, send payment reminders — all via natural language commands.
+          <div className="p-8">
+            <div className="bg-secondary/40 border border-border rounded-2xl p-6">
+              <p className="text-sm font-bold text-foreground mb-2 flex items-center gap-2">
+                🤖 AI Agent Connectivity
+              </p>
+              <p className="text-xs text-muted-foreground leading-relaxed max-w-2xl">
+                Soon, you'll be able to connect your AI assistants (Claude, GPT, Cursor) directly to your invoicing data. 
+                They'll be able to create invoices, track who owes you money, and send personalized follow-ups on your behalf.
               </p>
             </div>
           </div>
