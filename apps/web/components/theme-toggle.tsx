@@ -1,7 +1,7 @@
 "use client";
 
-import { useTheme } from "next-themes";
-import { Moon, Sun, Monitor, Laptop } from "lucide-react";
+import { useTheme, type Theme } from "./theme-provider";
+import { Moon, Sun, Laptop, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export function ThemeToggle() {
@@ -12,10 +12,10 @@ export function ThemeToggle() {
 
   if (!mounted) return <div className="w-8 h-8" />;
 
-  const themes = [
-    { name: 'light', icon: Sun, label: 'Light' },
-    { name: 'dark', icon: Moon, label: 'Dark' },
-    { name: 'midnight', icon: Laptop, label: 'Midnight' },
+  const themes: { name: Exclude<Theme, "system">; icon: LucideIcon; label: string }[] = [
+    { name: "light", icon: Sun, label: "Light" },
+    { name: "dark", icon: Moon, label: "Dark" },
+    { name: "midnight", icon: Laptop, label: "Midnight" },
   ];
 
   return (

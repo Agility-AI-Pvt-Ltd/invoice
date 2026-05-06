@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import { Plus, Trash2, X, Loader2, UserPlus, FileText, User, Calendar, Receipt, TrendingUp, AlertCircle, CheckCircle2, Box } from "lucide-react";
 
 type Customer = { id: string; name: string; stateCode: string | null };
-type Product = { id: string; name: string; price: number; hsnCode: string | null; taxRate: number };
+type Product = { id: string; name: string; price: number; hsnCode: string | null; taxRate: number; productKind: string };
 type LineItem = {
   id: string;
+  productId: string | null;
   description: string;
   hsnCode: string;
   quantity: number;
@@ -179,7 +180,14 @@ type ExistingData = {
   customerNameOrId: string;
   placeOfSupply: string;
   notes: string;
-  items: { description: string; hsnCode: string; quantity: number; unitPrice: number; taxRate: number }[];
+  items: {
+    productId: string | null;
+    description: string;
+    hsnCode: string;
+    quantity: number;
+    unitPrice: number;
+    taxRate: number;
+  }[];
 };
 
 // ------ Main Form ------
@@ -218,10 +226,20 @@ export default function InvoiceForm({
     : "";
   const [customerInput, setCustomerInput] = useState(initialCustomerName);
   const [customerStateCode, setCustomerStateCode] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
 
   const [items, setItems] = useState<LineItem[]>(
-    existingData?.items.map((item, i) => ({ ...item, id: String(i + 1) })) ??
-    [{ id: "1", description: "", hsnCode: "", quantity: 1, unitPrice: 0, taxRate: 18 }]
+    existingData?.items.map((item, i) => ({
+      id: String(i + 1),
+      productId: item.productId ?? null,
+      description: item.description,
+      hsnCode: item.hsnCode,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      taxRate: item.taxRate,
+    })) ??
+    [{ id: "1", productId: null, description: "", hsnCode: "", quantity: 0, unitPrice: 0, taxRate: 18 }]
   );
 
   const selectedCustomer = useMemo(
@@ -245,7 +263,10 @@ export default function InvoiceForm({
   }, [items, isInterState]);
 
   const addItem = () =>
-    setItems((p) => [...p, { id: crypto.randomUUID(), description: "", hsnCode: "", quantity: 1, unitPrice: 0, taxRate: 18 }]);
+    setItems((p) => [
+      ...p,
+      { id: crypto.randomUUID(), productId: null, description: "", hsnCode: "", quantity: 0, unitPrice: 0, taxRate: 18 },
+    ]);
 
   const removeItem = (id: string) =>
     items.length > 1 && setItems((p) => p.filter((i) => i.id !== id));
@@ -276,8 +297,11 @@ export default function InvoiceForm({
           notes,
           customerNameOrId: customerInput,
           customerStateCode,
+          customerEmail,
+          customerPhone,
           template: selectedTemplate,
           items: items.map((i) => ({
+            productId: i.productId ?? undefined,
             description: i.description,
             hsnCode: i.hsnCode,
             quantity: Number(i.quantity),
@@ -413,20 +437,45 @@ export default function InvoiceForm({
               </div>
 
               {!selectedCustomer && customerInput.trim() && (
-                <div className="p-4 bg-amber-500/5 border border-amber-500/20 rounded-xl space-y-3">
-                  <p className="text-xs font-bold text-amber-600 flex items-center gap-2">
-                     <AlertCircle className="w-3.5 h-3.5" /> New Customer Detected
-                  </p>
-                  <div>
-                    <label className="text-[10px] font-bold text-amber-700/70 uppercase tracking-wider mb-1.5 block">Customer State Code *</label>
-                    <input
-                      required
-                      value={customerStateCode}
-                      onChange={(e) => setCustomerStateCode(e.target.value)}
-                      placeholder="e.g. 27 for Maharashtra"
-                      className={`${inputCls} border-amber-500/30 focus:border-amber-500 focus:ring-amber-500/10`}
-                    />
+                <div className="p-6 bg-primary/5 border border-primary/20 rounded-2xl space-y-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-bold text-primary flex items-center gap-2">
+                       <UserPlus className="w-4 h-4" /> New Customer Details
+                    </p>
+                    <span className="text-[10px] font-bold text-primary/50 uppercase tracking-widest bg-primary/10 px-2 py-0.5 rounded-full">Automated CRM</span>
                   </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">State Code *</label>
+                      <input
+                        required
+                        value={customerStateCode}
+                        onChange={(e) => setCustomerStateCode(e.target.value)}
+                        placeholder="e.g. 27"
+                        className={inputCls}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">Email Address</label>
+                      <input
+                        value={customerEmail}
+                        onChange={(e) => setCustomerEmail(e.target.value)}
+                        placeholder="client@email.com"
+                        className={inputCls}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">Phone Number</label>
+                      <input
+                        value={customerPhone}
+                        onChange={(e) => setCustomerPhone(e.target.value)}
+                        placeholder="+91..."
+                        className={inputCls}
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground italic">These details will be saved to your customer database automatically.</p>
                 </div>
               )}
 
@@ -452,6 +501,17 @@ export default function InvoiceForm({
                   </h3>
                </div>
                
+               <div className="px-6 py-3 border-b border-border bg-secondary/10 hidden md:grid grid-cols-12 gap-4">
+                 <div className="col-span-6 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Description</div>
+                 <div className="col-span-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">HSN/SAC</div>
+                 <div className="col-span-1 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Qty</div>
+                 <div className="col-span-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
+                   Rate (₹)
+                   <span className="text-[8px] opacity-40 lowercase font-medium tracking-normal">(Editable)</span>
+                 </div>
+                 <div className="col-span-1 text-[10px] font-bold text-muted-foreground uppercase tracking-widest text-right">Total</div>
+               </div>
+
                <datalist id="product-list">
                  {products.map((p) => <option key={p.id} value={p.name} />)}
                </datalist>
@@ -477,13 +537,24 @@ export default function InvoiceForm({
                               placeholder="Description of goods or services"
                               value={item.description}
                               onChange={(e) => {
-                                updateItem(item.id, "description", e.target.value);
-                                const p = products.find((pr) => pr.name === e.target.value);
-                                if (p) {
-                                  updateItem(item.id, "unitPrice", p.price);
-                                  updateItem(item.id, "hsnCode", p.hsnCode || "");
-                                  updateItem(item.id, "taxRate", p.taxRate);
-                                }
+                                const v = e.target.value;
+                                setItems((p) =>
+                                  p.map((row) => {
+                                    if (row.id !== item.id) return row;
+                                    const matched = products.find((pr) => pr.name === v);
+                                    if (matched) {
+                                      return {
+                                        ...row,
+                                        description: v,
+                                        productId: matched.id,
+                                        unitPrice: matched.price,
+                                        hsnCode: matched.hsnCode || "",
+                                        taxRate: matched.taxRate,
+                                      };
+                                    }
+                                    return { ...row, description: v, productId: null };
+                                  })
+                                );
                               }}
                               className={inputCls}
                            />
@@ -496,23 +567,26 @@ export default function InvoiceForm({
                               className={inputCls}
                            />
                         </div>
-                        <div className="md:col-span-2">
+                        <div className="md:col-span-1">
                            <input
-                              type="number" min="1" step="any"
-                              placeholder="Qty"
-                              value={item.quantity}
-                              onChange={(e) => updateItem(item.id, "quantity", Number(e.target.value))}
+                              type="number" min="0" step="any"
+                              placeholder="0"
+                              value={item.quantity === 0 ? "" : item.quantity}
+                              onChange={(e) => updateItem(item.id, "quantity", Number(e.target.value) || 0)}
                               className={inputCls}
                            />
                         </div>
                         <div className="md:col-span-2">
                            <input
                               type="number" min="0" step="0.01"
-                              placeholder="Rate"
-                              value={item.unitPrice}
-                              onChange={(e) => updateItem(item.id, "unitPrice", Number(e.target.value))}
+                              placeholder="0.00"
+                              value={item.unitPrice === 0 ? "" : item.unitPrice}
+                              onChange={(e) => updateItem(item.id, "unitPrice", Number(e.target.value) || 0)}
                               className={inputCls}
                            />
+                        </div>
+                        <div className="md:col-span-1 flex items-center justify-end">
+                           <span className="text-xs font-bold text-slate-900">₹{((item.quantity || 0) * (item.unitPrice || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                         </div>
                       </div>
 
@@ -529,7 +603,7 @@ export default function InvoiceForm({
                          </div>
                          <div className="text-right min-w-[100px]">
                             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Line Total</span>
-                            <span className="text-sm font-bold">₹{(item.quantity * item.unitPrice).toLocaleString('en-IN')}</span>
+                            <span className="text-sm font-bold">₹{((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0)).toLocaleString('en-IN')}</span>
                          </div>
                       </div>
                     </div>

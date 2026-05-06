@@ -10,6 +10,7 @@ import {
   Box, 
   Settings, 
   Repeat, 
+  Warehouse,
   BarChart2,
   ChevronRight
 } from "lucide-react";
@@ -22,6 +23,7 @@ const navItems = [
   { href: "/dashboard/recurring", icon: Repeat, label: "Recurring" },
   { href: "/dashboard/customers", icon: Users, label: "Customers" },
   { href: "/dashboard/products", icon: Box, label: "Products" },
+  { href: "/dashboard/inventory", icon: Warehouse, label: "Inventory" },
   { href: "/dashboard/reports", icon: BarChart2, label: "Reports & GST" },
   { href: "/dashboard/settings", icon: Settings, label: "Settings" },
 ];
@@ -37,10 +39,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="h-20 flex items-center px-6 border-b border-border/50">
           <div className="flex items-center gap-2.5 group cursor-pointer">
             <div className="p-1.5 bg-primary/10 rounded-xl group-hover:bg-primary/20 transition-colors">
-              <Image src="/assets/invoicely.png" alt="" width={28} height={28} className="rounded-lg object-contain shadow-sm" />
+              <Image src="/assets/Invoicely_logo_Final.png" alt="" width={28} height={28} className="rounded-lg object-contain shadow-sm" />
             </div>
             <span className="text-xl font-bold tracking-tight heading-display text-foreground">
-              Invoice<span className="text-primary">ly</span>
+              Agility <span className="text-primary">AI</span>
             </span>
           </div>
         </div>

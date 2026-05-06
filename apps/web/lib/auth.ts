@@ -7,6 +7,7 @@ async function getUserId() {
   return cookieStore.get('userId')?.value ?? null;
 }
 
+/** Keep `ownedOrgs` fields minimal so auth queries stay valid before optional migrations (e.g. inventory columns). */
 const USER_SELECT = {
   id: true,
   email: true,
@@ -15,7 +16,12 @@ const USER_SELECT = {
   isOnboarded: true,
   createdAt: true,
   updatedAt: true,
-  ownedOrgs: true,
+  ownedOrgs: {
+    select: {
+      id: true,
+      stateCode: true,
+    },
+  },
 } as const;
 
 export async function getSession() {

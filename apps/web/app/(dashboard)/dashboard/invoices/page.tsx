@@ -21,12 +21,28 @@ const STATUS_STYLES: Record<string, string> = {
   CANCELLED: "bg-muted text-muted-foreground border-border opacity-60",
 };
 
-export default async function InvoicesPage() {
+export default async function InvoicesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; status?: string }>;
+}) {
+  const { q, status } = await searchParams;
   const user = await requireAuth();
   const organizationId = user.ownedOrgs[0]?.id;
 
   const invoices = await prisma.invoice.findMany({
-    where: { organizationId },
+    where: { 
+      organizationId,
+      AND: [
+        q ? {
+          OR: [
+            { invoiceNumber: { contains: q, mode: 'insensitive' } },
+            { customer: { name: { contains: q, mode: 'insensitive' } } },
+          ]
+        } : {},
+        status ? { status: status as any } : {},
+      ]
+    },
     orderBy: { createdAt: 'desc' },
     include: { customer: true },
   });
@@ -49,25 +65,36 @@ export default async function InvoicesPage() {
       </div>
 
       {/* Toolbar */}
-      <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+      <form method="GET" className="flex flex-col md:flex-row gap-4 items-center justify-between">
         <div className="relative w-full md:w-96 group">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
           <input 
+            name="q"
+            defaultValue={q}
             placeholder="Search by invoice # or customer..." 
             className="w-full bg-card border border-border rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
           />
         </div>
         <div className="flex items-center gap-2 w-full md:w-auto">
-          <button className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-card border border-border rounded-xl text-sm font-semibold hover:bg-secondary transition-all">
-            <Filter className="w-4 h-4" />
+          <select 
+            name="status"
+            defaultValue={status}
+            className="flex-1 md:flex-none bg-card border border-border rounded-xl px-4 py-2.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary/20"
+          >
+            <option value="">All Statuses</option>
+            <option value="DRAFT">Draft</option>
+            <option value="SENT">Sent</option>
+            <option value="PAID">Paid</option>
+            <option value="OVERDUE">Overdue</option>
+          </select>
+          <button type="submit" className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold hover:opacity-90 transition-all">
             Filter
           </button>
-          <button className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-card border border-border rounded-xl text-sm font-semibold hover:bg-secondary transition-all">
-            <Download className="w-4 h-4" />
-            Export
-          </button>
+          <Link href="/dashboard/invoices" className="p-2.5 bg-secondary border border-border rounded-xl text-xs font-bold hover:bg-border transition-all">
+            Reset
+          </Link>
         </div>
-      </div>
+      </form>
 
       {/* Table Container */}
       <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden animate-in">
@@ -93,16 +120,13 @@ export default async function InvoicesPage() {
                       </div>
                       <div className="space-y-1">
                         <p className="text-sm font-bold">No invoices found</p>
-                        <p className="text-xs text-muted-foreground">Start by creating your first professional invoice.</p>
+                        <p className="text-xs text-muted-foreground">Try adjusting your filters or create a new invoice.</p>
                       </div>
-                      <Link href="/dashboard/invoices/new" className="text-xs font-bold text-primary hover:underline mt-2">
-                        Create Invoice →
-                      </Link>
                     </div>
                   </td>
                 </tr>
               ) : invoices.map((inv) => (
-                <tr key={inv.id} className="hover:bg-secondary/30 transition-all group cursor-pointer" onClick={() => {}}>
+                <tr key={inv.id} className="hover:bg-secondary/30 transition-all group cursor-default">
                   <td className="px-6 py-5">
                     <span className="font-bold text-foreground group-hover:text-primary transition-colors">#{inv.invoiceNumber}</span>
                   </td>
@@ -118,7 +142,7 @@ export default async function InvoicesPage() {
                     <span className="text-muted-foreground font-medium">{new Date(inv.issueDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
                   </td>
                   <td className="px-6 py-5">
-                    <span className="font-bold text-foreground">₹{inv.total.toLocaleString('en-IN')}</span>
+                    <span className="font-bold text-foreground">₹{Number(inv.total).toLocaleString('en-IN')}</span>
                   </td>
                   <td className="px-6 py-5 text-center">
                     <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${STATUS_STYLES[inv.status] || STATUS_STYLES.DRAFT}`}>

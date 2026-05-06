@@ -1,14 +1,27 @@
 import { requireAuth } from '../../../../lib/auth';
 import { prisma } from '@repo/db';
-import { Users, UserPlus, Search, Filter, Download, MoreHorizontal } from 'lucide-react';
+import Link from 'next/link';
+import { Users, UserPlus, Search, Filter, Download, MoreHorizontal, Pencil } from 'lucide-react';
 import CustomerModal from './CustomerModal';
 
-export default async function CustomersPage() {
+export default async function CustomersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string }>;
+}) {
+  const { q } = await searchParams;
   const user = await requireAuth();
   const organizationId = user.ownedOrgs[0]?.id;
 
   const customers = await prisma.customer.findMany({
-    where: { organizationId },
+    where: { 
+      organizationId,
+      OR: q ? [
+        { name: { contains: q, mode: 'insensitive' } },
+        { email: { contains: q, mode: 'insensitive' } },
+        { gstin: { contains: q, mode: 'insensitive' } },
+      ] : undefined
+    },
     orderBy: { createdAt: 'desc' },
   });
 
@@ -24,25 +37,25 @@ export default async function CustomersPage() {
       </div>
 
       {/* Toolbar */}
-      <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+      <form method="GET" className="flex flex-col md:flex-row gap-4 items-center justify-between">
         <div className="relative w-full md:w-96 group">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
           <input 
+            name="q"
+            defaultValue={q}
             placeholder="Search customers by name, email or GSTIN..." 
             className="w-full bg-card border border-border rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
           />
         </div>
         <div className="flex items-center gap-2 w-full md:w-auto">
-          <button className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-card border border-border rounded-xl text-sm font-bold hover:bg-secondary transition-all">
-            <Filter className="w-4 h-4" />
-            Filter
+          <button type="submit" className="flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground text-sm font-bold rounded-xl hover:opacity-90 transition-all shadow-md">
+            Search
           </button>
-          <button className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-card border border-border rounded-xl text-sm font-bold hover:bg-secondary transition-all">
-            <Download className="w-4 h-4" />
-            Export
-          </button>
+          <Link href="/dashboard/customers" className="p-2.5 bg-secondary border border-border rounded-xl text-xs font-bold hover:bg-border transition-all">
+            Reset
+          </Link>
         </div>
-      </div>
+      </form>
 
       {/* Table Container */}
       <div className="bg-card border border-border rounded-3xl shadow-sm overflow-hidden">
@@ -67,7 +80,7 @@ export default async function CustomersPage() {
                         <Users className="w-8 h-8 text-muted-foreground/50" />
                       </div>
                       <p className="text-sm font-bold text-foreground">No customers found</p>
-                      <p className="text-xs text-muted-foreground max-w-[200px]">Add your first client to start creating professional invoices.</p>
+                      <p className="text-xs text-muted-foreground max-w-[200px]">Try adjusting your search or add a new customer.</p>
                     </div>
                   </td>
                 </tr>
@@ -100,9 +113,15 @@ export default async function CustomersPage() {
                       }
                     </td>
                     <td className="px-8 py-6 text-right">
-                      <button className="p-2 hover:bg-secondary rounded-xl transition-colors text-muted-foreground hover:text-foreground">
-                        <MoreHorizontal className="w-4 h-4" />
-                      </button>
+                      <CustomerModal 
+                        customer={c as any}
+                        trigger={
+                          <button className="p-2 hover:bg-secondary rounded-xl transition-colors text-muted-foreground hover:text-primary flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest">
+                            <Pencil className="w-3.5 h-3.5" />
+                            Edit
+                          </button>
+                        }
+                      />
                     </td>
                   </tr>
                 ))

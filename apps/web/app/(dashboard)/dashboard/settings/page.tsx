@@ -2,6 +2,7 @@ import { requireAuth } from '../../../../lib/auth';
 import { prisma } from '@repo/db';
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
+import { env } from '../../../../lib/env';
 import {
   Building2, CreditCard, Mail, MessageSquare,
   Save, ChevronRight, CheckCircle, AlertCircle, Zap
@@ -50,12 +51,18 @@ export default async function SettingsPage() {
   const headersList = await headers();
   const host = headersList.get("host");
   const isLocal = host?.includes("localhost");
-  const webhookUrl = isLocal 
-    ? `http://${host}/api/webhooks/razorpay` 
-    : `https://www.agilityaiinvoicely.com/api/webhooks/razorpay`;
+  const proto = headersList.get("x-forwarded-proto") ?? (isLocal ? "http" : "https");
+  const baseUrl =
+    isLocal && host
+      ? `${proto}://${host}`
+      : env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
+  const webhookUrl = `${baseUrl}/api/webhooks/razorpay`;
 
   const user = await requireAuth();
   const orgId = user.ownedOrgs[0]?.id;
+  if (!orgId) {
+    redirect("/onboarding");
+  }
 
   const [org, emailCfg, waConfig, pgConfigs] = await Promise.all([
     prisma.organization.findUnique({ where: { id: orgId } }),
@@ -72,6 +79,7 @@ export default async function SettingsPage() {
     "use server";
     const u = await requireAuth();
     const id = u.ownedOrgs[0]?.id;
+    if (!id) redirect("/dashboard/settings?error=no_org");
     await prisma.organization.update({
       where: { id },
       data: {
@@ -87,6 +95,7 @@ export default async function SettingsPage() {
         defaultTemplate: fd.get('defaultTemplate') as string || 'modern',
         invoicePrefix: fd.get('invoicePrefix') as string || 'INV',
         defaultDueDays: parseInt(fd.get('defaultDueDays') as string) || 30,
+        inventoryTrackingEnabled: fd.get("inventoryTrackingEnabled") === "on",
       }
     });
     redirect('/dashboard/settings');
@@ -96,6 +105,7 @@ export default async function SettingsPage() {
     "use server";
     const u = await requireAuth();
     const id = u.ownedOrgs[0]?.id;
+    if (!id) redirect("/dashboard/settings?error=no_org");
     const keyId = fd.get('razorpay_key_id') as string;
     const keySecret = fd.get('razorpay_key_secret') as string;
     const webhookSecret = fd.get('razorpay_webhook_secret') as string;
@@ -112,6 +122,7 @@ export default async function SettingsPage() {
     "use server";
     const u = await requireAuth();
     const id = u.ownedOrgs[0]?.id;
+    if (!id) redirect("/dashboard/settings?error=no_org");
     const provider = fd.get('email_provider') as 'RESEND' | 'SMTP' | 'SENDGRID';
     await prisma.emailConfig.upsert({
       where: { organizationId: id },
@@ -143,6 +154,7 @@ export default async function SettingsPage() {
     "use server";
     const u = await requireAuth();
     const id = u.ownedOrgs[0]?.id;
+    if (!id) redirect("/dashboard/settings?error=no_org");
     const provider = fd.get('wa_provider') as 'TWILIO' | 'WATI' | 'META_CLOUD';
     await prisma.whatsAppConfig.upsert({
       where: { organizationId: id },
@@ -232,6 +244,24 @@ export default async function SettingsPage() {
                       <option value="minimal">Minimal (Clean)</option>
                     </select>
                   </Field>
+                </div>
+                <div className="md:col-span-3 flex items-start gap-3 pt-2">
+                  <input
+                    type="checkbox"
+                    id="inventoryTrackingEnabled"
+                    name="inventoryTrackingEnabled"
+                    defaultChecked={org.inventoryTrackingEnabled}
+                    className="mt-1 w-4 h-4 rounded border-border text-primary focus:ring-primary/20 cursor-pointer"
+                  />
+                  <div>
+                    <label htmlFor="inventoryTrackingEnabled" className="text-sm font-semibold text-foreground cursor-pointer">
+                      Track inventory (stock)
+                    </label>
+                    <p className="text-xs text-muted-foreground mt-0.5 max-w-xl">
+                      When enabled, recording a payment that puts an invoice in <span className="font-medium text-foreground">Partially paid</span> or <span className="font-medium text-foreground">Paid</span> deducts on-hand quantity (full line quantities, once per line) for items linked to catalog products of type <span className="font-medium text-foreground">Good</span>. Ensure each SKU has stock in{' '}
+                      <a href="/dashboard/inventory" className="text-primary font-medium hover:underline">Inventory</a>.
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>

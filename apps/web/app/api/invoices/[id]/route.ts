@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@repo/db';
-import { getSession } from '../../../../../lib/auth';
-import { computeInvoiceTotals, validateItems } from '../../../../../lib/gst';
+import { getSession } from '@/lib/auth';
+import { computeInvoiceTotals, validateItems } from '@/lib/gst';
+import { buildInvoiceItemCreates } from '@/lib/domain/inventory';
 
 // GET /api/invoices/[id] — fetch single invoice (for edit form)
 export async function GET(
@@ -10,10 +11,10 @@ export async function GET(
 ) {
   const { id } = await params;
   const user = await getSession();
-  if (!user || !user.ownedOrgs || user.ownedOrgs.length === 0) {
+  const organizationId = user?.ownedOrgs?.[0]?.id;
+  if (!organizationId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const organizationId = user.ownedOrgs[0].id;
 
   const invoice = await prisma.invoice.findUnique({
     where: { id, organizationId },
@@ -32,10 +33,10 @@ export async function PUT(
   try {
     const { id } = await params;
     const user = await getSession();
-    if (!user || !user.ownedOrgs || user.ownedOrgs.length === 0) {
+    const organization = user?.ownedOrgs?.[0];
+    if (!organization) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    const organization = user.ownedOrgs[0];
 
     const existing = await prisma.invoice.findUnique({
       where: { id, organizationId: organization.id },
@@ -88,6 +89,12 @@ export async function PUT(
 
     const updated = await prisma.$transaction(async (tx) => {
       await tx.invoiceItem.deleteMany({ where: { invoiceId: id } });
+      const itemCreates = await buildInvoiceItemCreates(
+        tx,
+        organization.id,
+        items,
+        processedItems
+      );
       return tx.invoice.update({
         where: { id },
         data: {
@@ -102,7 +109,7 @@ export async function PUT(
           sgstTotal,
           igstTotal,
           total: grandTotal,
-          items: { create: processedItems },
+          items: { create: itemCreates },
         },
         include: { items: true, customer: true },
       });
@@ -136,10 +143,10 @@ export async function DELETE(
   try {
     const { id } = await params;
     const user = await getSession();
-    if (!user || !user.ownedOrgs || user.ownedOrgs.length === 0) {
+    const organizationId = user?.ownedOrgs?.[0]?.id;
+    if (!organizationId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    const organizationId = user.ownedOrgs[0].id;
 
     const existing = await prisma.invoice.findUnique({ where: { id, organizationId } });
     if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });

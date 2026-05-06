@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@repo/db";
-import { getSession } from "../../../../../lib/auth";
+import { getSession } from "@/lib/auth";
 import Razorpay from "razorpay";
+import { verifyOrgAccess, createErrorResponse, logApiAction } from "@/lib/api-utils";
+import { checkAuthRateLimit } from "@/lib/ratelimit";
+import { env } from "@/lib/env";
 
 export async function POST(
   req: Request,
@@ -10,25 +13,46 @@ export async function POST(
   try {
     const { id } = await params;
     const user = await getSession();
-    if (!user || !user.ownedOrgs || user.ownedOrgs.length === 0) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const organizationId = user?.ownedOrgs?.[0]?.id;
+
+    const orgAccess = verifyOrgAccess(user, organizationId);
+    if (!orgAccess.hasAccess) {
+      return NextResponse.json(
+        { error: orgAccess.error.message },
+        { status: orgAccess.error.statusCode }
+      );
     }
-    const organizationId = user.ownedOrgs[0].id;
+
+    const orgId = orgAccess.org.id;
+
+    // Rate limit payment link generation
+    const rateLimit = await checkAuthRateLimit(`payment-link:${orgId}`);
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: `Too many requests. Try again in ${rateLimit.retryAfter}s.` },
+        { status: 429 }
+      );
+    }
 
     // Load invoice + customer + org
     const invoice = await prisma.invoice.findUnique({
-      where: { id, organizationId },
+      where: { id, organizationId: orgId },
       include: { customer: true, organization: true },
     });
-    if (!invoice) return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
+
+    if (!invoice) {
+      return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
+    }
+
     if (invoice.status === "PAID") {
       return NextResponse.json({ error: "Invoice is already paid" }, { status: 400 });
     }
 
     // Load Razorpay credentials
     const gatewayCfg = await prisma.paymentGatewayConfig.findUnique({
-      where: { organizationId_provider: { organizationId, provider: "RAZORPAY" } },
+      where: { organizationId_provider: { organizationId: orgId, provider: "RAZORPAY" } },
     });
+
     if (!gatewayCfg || !gatewayCfg.isActive) {
       return NextResponse.json(
         { error: "Razorpay not configured. Go to Settings → Razorpay to connect." },
@@ -40,6 +64,7 @@ export async function POST(
     const existingLink = await prisma.paymentLink.findFirst({
       where: { invoiceId: id, status: "PENDING" },
     });
+
     if (existingLink) {
       return NextResponse.json({ shortUrl: existingLink.shortUrl, alreadyExists: true });
     }
@@ -49,36 +74,48 @@ export async function POST(
       where: { invoiceId: id },
       _sum: { amount: true },
     });
+
     const alreadyPaid = Number(payments._sum.amount ?? 0);
     const remaining = Number(invoice.total) - alreadyPaid;
+
     if (remaining <= 0) {
       return NextResponse.json({ error: "No outstanding balance" }, { status: 400 });
     }
 
     // Create Razorpay payment link
     const razorpay = new Razorpay({ key_id: gatewayCfg.keyId, key_secret: gatewayCfg.keySecret });
-    const rzpLink = await (razorpay.paymentLink as any).create({
-      amount: Math.round(remaining * 100), // rupees → paise
-      currency: invoice.organization.currency || "INR",
-      description: `Invoice ${invoice.invoiceNumber} — ${invoice.organization.name}`,
-      reference_id: invoice.invoiceNumber,
-      customer: {
-        name: invoice.customer.name,
-        email: invoice.customer.email || undefined,
-        contact: invoice.customer.phone || undefined,
-      },
-      notify: {
-        sms: !!invoice.customer.phone,
-        email: !!invoice.customer.email,
-      },
-      reminder_enable: true,
-      notes: {
-        invoice_id: invoice.id,
-        org_id: organizationId,
-      },
-      callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/invoices/${id}`,
-      callback_method: "get",
-    });
+
+    // Type-safe Razorpay API call
+    interface RazorpayLinkResponse {
+      id: string;
+      short_url: string;
+      expire_by?: number;
+    }
+
+    const rzpLink = await (razorpay.paymentLink.create as (config: any) => Promise<RazorpayLinkResponse>)(
+      {
+        amount: Math.round(remaining * 100), // rupees → paise
+        currency: invoice.organization.currency || "INR",
+        description: `Invoice ${invoice.invoiceNumber} — ${invoice.organization.name}`,
+        reference_id: invoice.invoiceNumber,
+        customer: {
+          name: invoice.customer.name,
+          email: invoice.customer.email || undefined,
+          contact: invoice.customer.phone || undefined,
+        },
+        notify: {
+          sms: !!invoice.customer.phone,
+          email: !!invoice.customer.email,
+        },
+        reminder_enable: true,
+        notes: {
+          invoice_id: invoice.id,
+          org_id: organizationId,
+        },
+        callback_url: `${env.NEXT_PUBLIC_APP_URL}/dashboard/invoices/${id}`,
+        callback_method: "get",
+      }
+    );
 
     // Build UPI QR data string — only when org has a configured UPI ID
     const upiId = (invoice.organization as any).upiId as string | null;
@@ -87,39 +124,34 @@ export async function POST(
       : null;
 
     // Save to DB
-    await prisma.$transaction([
-      prisma.paymentLink.create({
-        data: {
-          invoiceId: id,
-          provider: "RAZORPAY",
-          externalId: rzpLink.id,
-          shortUrl: rzpLink.short_url,
-          upiQrData,
-          status: "PENDING",
-          expiresAt: rzpLink.expire_by ? new Date(rzpLink.expire_by * 1000) : null,
-        },
-      }),
+    const paymentLink = await prisma.paymentLink.create({
+      data: {
+        invoiceId: id,
+        provider: "RAZORPAY",
+        externalId: rzpLink.id,
+        shortUrl: rzpLink.short_url,
+        upiQrData,
+        status: "PENDING",
+        expiresAt: rzpLink.expire_by ? new Date(rzpLink.expire_by * 1000) : null,
+      },
+    });
+
+    // Update invoice status and log
+    await Promise.all([
       prisma.invoice.update({
-        where: { id },
+        where: { id, organizationId: orgId },
         data: { status: "SENT" },
       }),
-      prisma.activityLog.create({
-        data: {
-          organizationId,
-          entity: "Invoice",
-          entityId: id,
-          action: "PAYMENT_LINK_GENERATED",
-          meta: { provider: "RAZORPAY", externalId: rzpLink.id, shortUrl: rzpLink.short_url },
-        },
+      logApiAction(orgId, "Invoice", id, "PAYMENT_LINK_GENERATED", {
+        provider: "RAZORPAY",
+        externalId: rzpLink.id,
+        shortUrl: rzpLink.short_url,
+        amount: remaining,
       }),
     ]);
 
     return NextResponse.json({ shortUrl: rzpLink.short_url, upiQrData });
-  } catch (err: any) {
-    console.error("Payment link error:", err);
-    return NextResponse.json(
-      { error: err?.error?.description || err?.message || "Failed to generate payment link" },
-      { status: 500 }
-    );
+  } catch (err) {
+    return createErrorResponse(err, "POST /api/invoices/[id]/payment-link");
   }
 }

@@ -14,6 +14,8 @@ export interface ProcessedItem {
   sgstAmount: number;
   igstAmount: number;
   total: number;
+  /** Optional catalog link; validated server-side against the organization. */
+  productId?: string | null;
 }
 
 export interface InvoiceTotals {
@@ -31,10 +33,16 @@ export function calculateGST(amount: number, taxRate: number, isInterState: bool
   return { cgst: totalTax / 2, sgst: totalTax / 2, igst: 0 };
 }
 
-export function computeInvoiceTotals(
-  items: Array<{ description: string; hsnCode?: string; quantity: unknown; unitPrice: unknown; taxRate?: unknown }>,
-  isInterState: boolean
-): InvoiceTotals {
+type LineInput = {
+  description: string;
+  hsnCode?: string;
+  quantity: unknown;
+  unitPrice: unknown;
+  taxRate?: unknown;
+  productId?: string | null;
+};
+
+export function computeInvoiceTotals(items: LineInput[], isInterState: boolean): InvoiceTotals {
   let subTotal = 0, cgstTotal = 0, sgstTotal = 0, igstTotal = 0;
 
   const processedItems: ProcessedItem[] = items.map((item) => {
@@ -59,6 +67,7 @@ export function computeInvoiceTotals(
       sgstAmount: taxes.sgst,
       igstAmount: taxes.igst,
       total: itemSub + taxes.cgst + taxes.sgst + taxes.igst,
+      productId: item.productId ?? null,
     };
   });
 

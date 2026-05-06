@@ -34,7 +34,11 @@ export async function registerUser(
 
   if (!validatedFields.success) {
     return {
-      errors: validatedFields.error.flatten().fieldErrors as RegisterState["errors"],
+      errors: validatedFields.error.flatten().fieldErrors as {
+        name?: string[];
+        email?: string[];
+        password?: string[];
+      },
       message: "Please fix the errors below.",
     };
   }

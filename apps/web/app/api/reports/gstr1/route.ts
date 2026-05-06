@@ -18,10 +18,10 @@ import { getSession } from '../../../../lib/auth';
  */
 export async function GET(req: Request) {
   const user = await getSession();
-  if (!user || !user.ownedOrgs || user.ownedOrgs.length === 0) {
+  const organizationId = user?.ownedOrgs?.[0]?.id;
+  if (!organizationId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const organizationId = user.ownedOrgs[0].id;
 
   const { searchParams } = new URL(req.url);
   const monthParam = searchParams.get('month'); // e.g. "2024-03"
@@ -31,7 +31,13 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Provide ?month=YYYY-MM' }, { status: 400 });
   }
 
-  const [year, month] = monthParam.split('-').map(Number);
+  const parts = monthParam.split("-");
+  const year = Number(parts[0]);
+  const month = Number(parts[1]);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
+    return NextResponse.json({ error: "Invalid ?month=YYYY-MM" }, { status: 400 });
+  }
+
   const from = new Date(year, month - 1, 1);
   const to = new Date(year, month, 0, 23, 59, 59); // last day of month
 

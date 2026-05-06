@@ -2,14 +2,15 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@repo/db';
 import { getSession } from '../../../lib/auth';
 import { computeInvoiceTotals, validateItems } from '../../../lib/gst';
+import { buildInvoiceItemCreates } from '@/lib/domain/inventory';
 
 export async function POST(request: Request) {
   try {
     const user = await getSession();
-    if (!user || !user.ownedOrgs || user.ownedOrgs.length === 0) {
+    const organization = user?.ownedOrgs?.[0];
+    if (!organization) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    const organization = user.ownedOrgs[0];
 
     const body = await request.json();
     const {
@@ -18,6 +19,8 @@ export async function POST(request: Request) {
       dueDate,
       customerNameOrId,
       customerStateCode,
+      customerEmail,
+      customerPhone,
       placeOfSupply,
       notes,
       items,
@@ -52,6 +55,8 @@ export async function POST(request: Request) {
           organizationId: organization.id,
           name: customerNameOrId,
           stateCode: customerStateCode || organization.stateCode,
+          email: customerEmail || null,
+          phone: customerPhone || null,
           isRegistered: false,
         },
       });
@@ -83,6 +88,13 @@ export async function POST(request: Request) {
         }
       }
 
+      const itemCreates = await buildInvoiceItemCreates(
+        tx,
+        organization.id,
+        items,
+        processedItems
+      );
+
       return tx.invoice.create({
         data: {
           organizationId: organization.id,
@@ -98,7 +110,7 @@ export async function POST(request: Request) {
           igstTotal,
           total: grandTotal,
           status: 'DRAFT',
-          items: { create: processedItems },
+          items: { create: itemCreates },
         },
         include: { items: true, customer: true },
       });

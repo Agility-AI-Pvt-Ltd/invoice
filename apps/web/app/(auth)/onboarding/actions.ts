@@ -51,7 +51,12 @@ export async function onboardUser(
 
   if (!validatedFields.success) {
     return {
-      errors: validatedFields.error.flatten().fieldErrors as OnboardingState["errors"],
+      errors: validatedFields.error.flatten().fieldErrors as {
+        companyName?: string[];
+        gstin?: string[];
+        stateCode?: string[];
+        address?: string[];
+      },
       message: "Please fix the errors below.",
     };
   }

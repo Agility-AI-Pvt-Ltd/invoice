@@ -499,7 +499,7 @@ const logos = [
 
 export default function HowItWorks() {
   const [activeTab, setActiveTab] = useState("connect");
-  const current = tabs.find((t) => t.id === activeTab);
+  const current = tabs.find((t) => t.id === activeTab) ?? tabs[0]!;
 
   return (
     <>

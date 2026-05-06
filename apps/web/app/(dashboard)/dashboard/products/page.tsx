@@ -3,12 +3,23 @@ import { prisma } from '@repo/db';
 import Link from 'next/link';
 import { Plus, Search, Box, Filter, Download, MoreHorizontal, TrendingUp } from 'lucide-react';
 
-export default async function ProductsPage() {
+export default async function ProductsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string }>;
+}) {
+  const { q } = await searchParams;
   const user = await requireAuth();
   const organizationId = user.ownedOrgs[0]?.id;
 
   const products = await prisma.product.findMany({
-    where: { organizationId },
+    where: { 
+      organizationId,
+      OR: q ? [
+        { name: { contains: q, mode: 'insensitive' } },
+        { hsnCode: { contains: q, mode: 'insensitive' } },
+      ] : undefined
+    },
     orderBy: { createdAt: 'desc' },
   });
 
@@ -27,25 +38,25 @@ export default async function ProductsPage() {
       </div>
 
       {/* Toolbar */}
-      <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+      <form method="GET" className="flex flex-col md:flex-row gap-4 items-center justify-between">
         <div className="relative w-full md:w-96 group">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
           <input 
+            name="q"
+            defaultValue={q}
             placeholder="Search catalog by name or HSN..." 
             className="w-full bg-card border border-border rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
           />
         </div>
         <div className="flex items-center gap-2 w-full md:w-auto">
-          <button className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-card border border-border rounded-xl text-sm font-bold hover:bg-secondary transition-all">
-            <Filter className="w-4 h-4" />
-            Filter
+          <button type="submit" className="flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground text-sm font-bold rounded-xl hover:opacity-90 transition-all">
+            Search
           </button>
-          <button className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-card border border-border rounded-xl text-sm font-bold hover:bg-secondary transition-all">
-            <Download className="w-4 h-4" />
-            Export
-          </button>
+          <Link href="/dashboard/products" className="p-2.5 bg-secondary border border-border rounded-xl text-xs font-bold hover:bg-border transition-all">
+            Reset
+          </Link>
         </div>
-      </div>
+      </form>
 
       {/* Table Container */}
       <div className="bg-card border border-border rounded-3xl shadow-sm overflow-hidden">
@@ -68,8 +79,8 @@ export default async function ProductsPage() {
                       <div className="w-16 h-16 bg-secondary/50 rounded-3xl flex items-center justify-center mb-2">
                         <Box className="w-8 h-8 text-muted-foreground/50" />
                       </div>
-                      <p className="text-sm font-bold text-foreground">No items in catalog</p>
-                      <p className="text-xs text-muted-foreground max-w-[200px]">Add your products or services to speed up your invoicing process.</p>
+                      <p className="text-sm font-bold text-foreground">No items found</p>
+                      <p className="text-xs text-muted-foreground max-w-[200px]">Try adjusting your search or add a new product.</p>
                     </div>
                   </td>
                 </tr>

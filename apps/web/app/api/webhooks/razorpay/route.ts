@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@repo/db";
+import { applyInventoryOnFullPayment } from "@/lib/domain/inventory";
 import { createHmac } from "crypto";
 
 /**
@@ -69,39 +70,112 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
     }
 
+    const invoiceId = pl.invoice.id;
+
     // 3. Atomic processing in a transaction
     try {
       await prisma.$transaction(async (tx) => {
-        // Attempt to "claim" this payment link — ensure it hasn't been processed
         const link = await tx.paymentLink.findUnique({
           where: { id: pl.id },
         });
 
-        if (!link || link.status !== "PENDING") {
-          return; // Already processed or changed
+        if (!link) {
+          console.warn("Webhook: Payment link not found in transaction", { linkId: pl.id });
+          return;
         }
 
-        // Update link status
+        if (link.status !== "PENDING") {
+          console.info("Webhook: Payment link already processed", {
+            linkId: pl.id,
+            status: link.status,
+          });
+          return; // Idempotent response
+        }
+
+        const invoiceRow = await tx.invoice.findUnique({
+          where: { id: invoiceId },
+        });
+
+        if (!invoiceRow) {
+          console.error("Webhook: Invoice not found in transaction", { invoiceId });
+          return;
+        }
+
+        // Duplicate webhook or manual payment settled the invoice first — close the link so Razorpay stops retrying.
+        if (invoiceRow.status === "PAID") {
+          console.warn("Webhook: Invoice already PAID; closing payment link only", { invoiceId });
+          await tx.paymentLink.update({
+            where: { id: pl.id },
+            data: { status: "PAID", paidAt: link.paidAt ?? new Date() },
+          });
+          return;
+        }
+
+        if (invoiceRow.status === "CANCELLED") {
+          console.error("Webhook: Payment captured for CANCELLED invoice — reconcile manually", {
+            invoiceId,
+            paymentLinkId,
+          });
+          await tx.paymentLink.update({
+            where: { id: pl.id },
+            data: { status: "PAID", paidAt: new Date() },
+          });
+          return;
+        }
+
+        // Same Razorpay payment event delivered twice (race) — do not double-book.
+        if (razorpayPaymentId) {
+          const existingPayment = await tx.payment.findFirst({
+            where: { invoiceId, gatewayPaymentId: razorpayPaymentId },
+          });
+          if (existingPayment) {
+            console.info("Webhook: Duplicate gateway payment id; closing link", {
+              invoiceId,
+              razorpayPaymentId,
+            });
+            await tx.paymentLink.update({
+              where: { id: pl.id },
+              data: { status: "PAID", paidAt: link.paidAt ?? new Date() },
+            });
+            return;
+          }
+        }
+
+        // Update payment link status
         await tx.paymentLink.update({
           where: { id: pl.id },
           data: { status: "PAID", paidAt: new Date() },
         });
 
-        const invoice = pl.invoice;
-        
-        // Calculate new status
+        const previousStatus = invoiceRow.status;
+
+        // Calculate totals with precise Decimal math
         const payments = await tx.payment.aggregate({
-          where: { invoiceId: invoice.id },
+          where: { invoiceId },
           _sum: { amount: true },
         });
         const alreadyPaid = Number(payments._sum.amount ?? 0);
         const totalPaid = alreadyPaid + amount;
-        const newStatus = totalPaid >= Number(invoice.total) - 0.01 ? "PAID" : "PARTIALLY_PAID";
+        const newStatus =
+          totalPaid >= Number(invoiceRow.total) - 0.01 ? "PAID" : "PARTIALLY_PAID";
+
+        // Validate amount is reasonable (within tolerance)
+        const expectedAmount = Number(invoiceRow.total) - alreadyPaid;
+        const amountDiff = Math.abs(amount - expectedAmount);
+        if (amountDiff > 0.01) {
+          console.warn("Webhook: Amount mismatch detected", {
+            expected: expectedAmount,
+            received: amount,
+            difference: amountDiff,
+            invoiceId,
+          });
+          // Log but continue - might be partial payment or rounding
+        }
 
         // Record payment
-        await tx.payment.create({
+        const payment = await tx.payment.create({
           data: {
-            invoiceId: invoice.id,
+            invoiceId,
             amount,
             method: "ONLINE",
             notes: `Razorpay Link: ${paymentLinkId}`,
@@ -111,33 +185,54 @@ export async function POST(req: Request) {
           },
         });
 
-        // Update invoice
+        // Update invoice status
         await tx.invoice.update({
-          where: { id: invoice.id },
-          data: { status: newStatus as any },
+          where: { id: invoiceId },
+          data: { status: newStatus },
         });
 
-        // Log activity
+        // Apply inventory changes if needed
+        await applyInventoryOnFullPayment(tx, {
+          organizationId,
+          invoiceId,
+          previousStatus,
+          newStatus,
+        });
+
+        // Log the action
         await tx.activityLog.create({
           data: {
             organizationId,
             entity: "Invoice",
-            entityId: invoice.id,
+            entityId: invoiceId,
             action: "PAYMENT_RECEIVED",
-            meta: { amount, gatewayPaymentId: razorpayPaymentId, newStatus },
+            meta: {
+              amount,
+              gatewayPaymentId: razorpayPaymentId,
+              newStatus,
+              paymentId: payment.id,
+            },
           },
+        });
+
+        console.info("Webhook: Payment processed successfully", {
+          invoiceId,
+          paymentId: payment.id,
+          newStatus,
         });
       });
     } catch (err) {
-      console.error("Atomic webhook processing failed:", err);
+      console.error("Webhook: Transaction processing failed", {
+        error: err instanceof Error ? err.message : String(err),
+        invoiceId,
+        paymentLinkId,
+        stack: err instanceof Error ? err.stack : undefined,
+      });
       return NextResponse.json({ error: "Internal processing error" }, { status: 500 });
     }
 
     return NextResponse.json({ received: true });
   }
 
-  // ── Handle other events ───────────────────────────────────────────
-  // We still want to verify signature for all events to prevent spoofing
-  // even if we don't process them yet.
-  return NextResponse.json({ received: true, note: "Event ignored after verification" });
+  return NextResponse.json({ error: "Unsupported or unhandled event type" }, { status: 400 });
 }

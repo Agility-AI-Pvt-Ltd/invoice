@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@repo/db";
-import { getSession } from "../../../../../lib/auth";
+import { getSession } from "@/lib/auth";
 import { renderToBuffer } from "@react-pdf/renderer";
-import { buildPDF } from "../../../../../lib/pdf-templates";
+import { buildPDF } from "@/lib/pdf-templates";
 import nodemailer from "nodemailer";
 import { Resend } from "resend";
-import { checkAuthRateLimit } from "../../../../../lib/ratelimit";
+import { checkAuthRateLimit } from "@/lib/ratelimit";
+import { verifyOrgAccess, createErrorResponse, logApiAction } from "@/lib/api-utils";
 
 export async function POST(
   req: Request,
@@ -14,13 +15,20 @@ export async function POST(
   try {
     const { id } = await params;
     const user = await getSession();
-    if (!user || !user.ownedOrgs || user.ownedOrgs.length === 0) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const organizationId = user?.ownedOrgs?.[0]?.id;
+
+    const orgAccess = verifyOrgAccess(user, organizationId);
+    if (!orgAccess.hasAccess) {
+      return NextResponse.json(
+        { error: orgAccess.error.message },
+        { status: orgAccess.error.statusCode }
+      );
     }
-    const organizationId = user.ownedOrgs[0].id;
+
+    const orgId = orgAccess.org.id;
 
     // Rate limit email sending per organization
-    const { allowed, retryAfter } = await checkAuthRateLimit(`email:${organizationId}`);
+    const { allowed, retryAfter } = await checkAuthRateLimit(`email:${orgId}`);
     if (!allowed) {
       return NextResponse.json(
         { error: `Too many email attempts. Please try again in ${retryAfter} seconds.` },
@@ -29,7 +37,7 @@ export async function POST(
     }
 
     const invoice = await prisma.invoice.findUnique({
-      where: { id, organizationId },
+      where: { id, organizationId: orgId },
       include: { customer: true, organization: true, paymentLinks: { where: { status: "PENDING" } } },
     });
     if (!invoice) return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
@@ -39,7 +47,7 @@ export async function POST(
       return NextResponse.json({ error: "Customer has no email address" }, { status: 400 });
     }
 
-    const emailCfg = await prisma.emailConfig.findUnique({ where: { organizationId } });
+    const emailCfg = await prisma.emailConfig.findUnique({ where: { organizationId: orgId } });
     if (!emailCfg) {
       return NextResponse.json(
         { error: "Email not configured. Go to Settings → Email Delivery." },
@@ -99,7 +107,15 @@ export async function POST(
         body: JSON.stringify({
           personalizations: [{ to: [{ email: toEmail }] }],
           from: { email: emailCfg.fromEmail, name: emailCfg.fromName },
-          subject, content: [{ type: "text/html", value: html }],
+          subject,
+          content: [{ type: "text/html", value: html }],
+          attachments: [
+            {
+              content: pdfBuffer.toString("base64"),
+              type: "application/pdf",
+              filename: `${invoice.invoiceNumber}.pdf`,
+            },
+          ],
         }),
       });
       if (!res.ok) throw new Error("SendGrid error: " + (await res.text()));
@@ -110,7 +126,7 @@ export async function POST(
       prisma.invoice.update({ where: { id }, data: { status: "SENT" } }),
       prisma.activityLog.create({
         data: {
-          organizationId,
+          organizationId: orgId,
           entity: "Invoice",
           entityId: id,
           action: "EMAIL_SENT",
@@ -120,9 +136,8 @@ export async function POST(
     ]);
 
     return NextResponse.json({ success: true, sentTo: toEmail });
-  } catch (err: any) {
-    console.error("Email send error:", err);
-    return NextResponse.json({ error: err.message || "Failed to send email" }, { status: 500 });
+  } catch (err) {
+    return createErrorResponse(err, "POST /api/invoices/[id]/send-email");
   }
 }
 

@@ -31,7 +31,10 @@ export async function loginUser(
 
   if (!validatedFields.success) {
     return {
-      errors: validatedFields.error.flatten().fieldErrors as LoginState["errors"],
+      errors: validatedFields.error.flatten().fieldErrors as {
+        email?: string[];
+        password?: string[];
+      },
       message: "Please fix the errors below.",
     };
   }

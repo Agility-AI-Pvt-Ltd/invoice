@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@repo/db";
-import { getSession } from "../../../../../lib/auth";
-import { checkAuthRateLimit } from "../../../../../lib/ratelimit";
+import { getSession } from "@/lib/auth";
+import { checkAuthRateLimit } from "@/lib/ratelimit";
+import { env } from "@/lib/env";
 
 export async function POST(
   req: Request,
@@ -10,10 +11,10 @@ export async function POST(
   try {
     const { id } = await params;
     const user = await getSession();
-    if (!user || !user.ownedOrgs || user.ownedOrgs.length === 0) {
+    const organizationId = user?.ownedOrgs?.[0]?.id;
+    if (!organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const organizationId = user.ownedOrgs[0].id;
 
     // Rate limit per organization
     const { allowed, retryAfter } = await checkAuthRateLimit(`whatsapp:${organizationId}`);
@@ -42,7 +43,7 @@ export async function POST(
     const paymentLink = invoice.paymentLinks[0]?.shortUrl;
     const message = `Hi ${invoice.customer.name}, your invoice ${invoice.invoiceNumber} from ${invoice.organization.name} for ₹${amount} is ready. 
 Due date: ${new Date(invoice.dueDate).toLocaleDateString('en-IN')}.
-${paymentLink ? `Pay securely here: ${paymentLink}` : `View invoice here: ${process.env.NEXT_PUBLIC_APP_URL}/dashboard/invoices/${id}`}`;
+${paymentLink ? `Pay securely here: ${paymentLink}` : `View invoice here: ${env.NEXT_PUBLIC_APP_URL}/dashboard/invoices/${id}`}`;
 
     // If NOT configured, we return a WhatsApp Web link as a fallback
     if (!waConfig || !waConfig.isActive) {

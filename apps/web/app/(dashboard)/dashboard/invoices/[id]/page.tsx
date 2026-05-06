@@ -204,8 +204,8 @@ function ModernTemplate({ invoice, isInterState }: any) {
                 </td>
                 <td className="py-6 text-center font-medium">{item.quantity}</td>
                 <td className="py-6 text-right font-medium">{fmt(item.unitPrice)}</td>
-                <td className="py-6 text-right text-slate-400 text-[10px] font-bold">{item.taxRate}%</td>
-                <td className="py-6 text-right font-black text-slate-900">{fmt(item.quantity * item.unitPrice)}</td>
+                <td className="py-6 text-right text-slate-400 text-[10px] font-bold">{item.taxRate?.toString()}%</td>
+                <td className="py-6 text-right font-black text-slate-900">{fmt(Number(item.quantity) * Number(item.unitPrice))}</td>
               </tr>
             ))}
           </tbody>
@@ -305,7 +305,7 @@ function ClassicTemplate({ invoice, isInterState }: any) {
               </td>
               <td className="px-6 py-6 text-center font-bold text-slate-600">{item.quantity}</td>
               <td className="px-6 py-6 text-right font-medium text-slate-600">{fmt(item.unitPrice)}</td>
-              <td className="px-6 py-6 text-right font-black text-slate-900">{fmt(item.quantity * item.unitPrice)}</td>
+              <td className="px-6 py-6 text-right font-black text-slate-900">{fmt(Number(item.quantity) * Number(item.unitPrice))}</td>
             </tr>
           ))}
         </tbody>
@@ -384,11 +384,11 @@ function MinimalTemplate({ invoice, isInterState }: any) {
           <div key={item.id} className="grid grid-cols-12 py-8 border-b border-slate-50 items-center">
             <div className="col-span-8">
               <p className="text-lg font-bold text-slate-900 tracking-tight">{item.description}</p>
-              <p className="text-[10px] text-slate-400 mt-1 font-medium italic">Rate: {fmt(item.unitPrice)} + {item.taxRate}% GST</p>
+              <p className="text-[10px] text-slate-400 mt-1 font-medium italic">Rate: {fmt(item.unitPrice)} + {item.taxRate.toString()}% GST</p>
             </div>
             <div className="col-span-1 text-center font-bold text-slate-400">{item.quantity}</div>
             <div className="col-span-3 text-right font-black text-xl text-slate-900 tracking-tighter italic">
-              {fmt(item.quantity * item.unitPrice * (1 + item.taxRate / 100))}
+              {fmt(Number(item.quantity) * Number(item.unitPrice) * (1 + Number(item.taxRate) / 100))}
             </div>
           </div>
         ))}

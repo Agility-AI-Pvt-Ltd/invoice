@@ -329,7 +329,7 @@ export default function InvoiceActions({
     const res = await fetch(`/api/invoices/${invoiceId}/payment-link`, { method: "POST" });
     const data = await res.json();
     if (!res.ok) { alert(data.error || "Failed to generate payment link"); setGeneratingLink(false); return; }
-    setPaymentLinkUrl(data.shortUrl);
+    if (data.shortUrl) setPaymentLinkUrl(data.shortUrl);
     if (!data.alreadyExists) setCurrentStatus("SENT");
     setGeneratingLink(false);
     navigator.clipboard.writeText(data.shortUrl).catch(() => {});
@@ -414,7 +414,7 @@ export default function InvoiceActions({
           {whatsAppSent ? "WA Sent ✓" : "WhatsApp"}
         </button>
 
-        {(currentStatus === "SENT" || currentStatus === "PARTIALLY_PAID" || currentStatus === "OVERDUE") && remaining > 0 && (
+        {(currentStatus === "DRAFT" || currentStatus === "SENT" || currentStatus === "PARTIALLY_PAID" || currentStatus === "OVERDUE") && remaining > 0 && (
           <button onClick={() => setShowPayment(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 border border-border text-xs text-foreground rounded-xl hover:bg-secondary transition-all font-bold">
             <IndianRupee className="w-3 h-3 text-primary" />

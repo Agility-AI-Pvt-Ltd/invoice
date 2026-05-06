@@ -16,7 +16,7 @@ export default async function DashboardPage() {
   const user = await requireAuth();
   const organizationId = user.ownedOrgs[0]?.id;
 
-  const [invoiceCount, customerCount, recentInvoices, revenueResult, pendingResult] = await Promise.all([
+  const [invoiceCount, customerCount, recentInvoices, revenueResult, pendingInvoices, paymentsResult] = await Promise.all([
     prisma.invoice.count({ where: { organizationId } }),
     prisma.customer.count({ where: { organizationId } }),
     prisma.invoice.findMany({
@@ -25,23 +25,35 @@ export default async function DashboardPage() {
       orderBy: { createdAt: 'desc' },
       include: { customer: true }
     }),
-    prisma.invoice.aggregate({
-      where: { organizationId, status: 'PAID' },
-      _sum: { total: true }
+    prisma.payment.aggregate({
+      where: { invoice: { organizationId } },
+      _sum: { amount: true }
     }),
     prisma.invoice.aggregate({
-      where: { organizationId, status: { in: ['SENT', 'PARTIALLY_PAID'] } },
+      where: { 
+        organizationId, 
+        status: { in: ['SENT', 'PARTIALLY_PAID', 'OVERDUE', 'DRAFT'] } 
+      },
       _sum: { total: true }
+    }),
+    prisma.payment.aggregate({
+      where: { 
+        invoice: { 
+          organizationId, 
+          status: { in: ['SENT', 'PARTIALLY_PAID', 'OVERDUE', 'DRAFT'] } 
+        } 
+      },
+      _sum: { amount: true }
     })
   ]);
 
-  const totalRevenue = revenueResult._sum.total ?? 0;
-  const pendingRevenue = pendingResult._sum.total ?? 0;
+  const totalRevenue = Number(revenueResult._sum.amount ?? 0);
+  const pendingRevenue = Number(pendingInvoices._sum.total ?? 0) - Number(paymentsResult._sum.amount ?? 0);
 
   const stats = [
     { 
       label: "Collected Revenue", 
-      value: `₹${totalRevenue.toLocaleString('en-IN')}`, 
+      value: `₹${Number(totalRevenue).toLocaleString('en-IN')}`, 
       icon: CheckCircle2,
       color: "text-green-600",
       bg: "bg-green-500/10",
@@ -49,7 +61,7 @@ export default async function DashboardPage() {
     },
     { 
       label: "Pending Payments", 
-      value: `₹${pendingRevenue.toLocaleString('en-IN')}`, 
+      value: `₹${Number(pendingRevenue).toLocaleString('en-IN')}`, 
       icon: Clock,
       color: "text-amber-600",
       bg: "bg-amber-500/10",
