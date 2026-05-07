@@ -38,6 +38,7 @@ export async function POST(
 
     const waConfig = await prisma.whatsAppConfig.findUnique({ where: { organizationId } });
     
+    
     // We construct a friendly message
     const amount = Number(invoice.total).toFixed(2);
     const paymentLink = invoice.paymentLinks[0]?.shortUrl;

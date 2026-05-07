@@ -10,13 +10,15 @@ import {
 type InvoiceItem = {
   description: string;
   hsnCode?: string | null;
-  quantity: number;
-  unitPrice: number;
-  taxRate: number;
-  cgstAmount: number;
-  sgstAmount: number;
-  igstAmount: number;
-  total: number;
+  // At runtime these often come from Prisma Decimal – keep type wide and
+  // coerce to numbers/strings right before rendering into <Text>.
+  quantity: number | string | { toNumber?: () => number };
+  unitPrice: number | string | { toNumber?: () => number };
+  taxRate: number | string | { toNumber?: () => number };
+  cgstAmount: number | string | { toNumber?: () => number };
+  sgstAmount: number | string | { toNumber?: () => number };
+  igstAmount: number | string | { toNumber?: () => number };
+  total: number | string | { toNumber?: () => number };
 };
 
 type InvoiceData = {
@@ -48,7 +50,21 @@ type InvoiceData = {
   };
 };
 
-const fmt = (n: number) => `₹${n.toFixed(2)}`;
+// Normalise any numeric-like value (including Prisma Decimal) to a JS number
+const toNumber = (value: any): number => {
+  if (value == null || Number.isNaN(value)) return 0;
+  if (typeof value === "number") return value;
+  if (typeof value === "string") return Number(value) || 0;
+  if (typeof value === "object" && typeof (value as any).toNumber === "function") {
+    return (value as any).toNumber();
+  }
+  return Number(value) || 0;
+};
+
+const fmt = (n: any) => {
+  const num = toNumber(n);
+  return `₹${num.toFixed(2)}`;
+};
 const fmtDate = (d: Date) =>
   new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 
@@ -157,11 +173,13 @@ function LineItemsTable({ items, s, isInterState }: { items: InvoiceItem[]; s: a
         <View key={i} style={s.tableRow}>
           <Text style={[s.tableCell, { width: colW.desc }]}>{item.description}</Text>
           <Text style={[s.tableCell, { width: colW.hsn, color: "#9ca3af" }]}>{item.hsnCode || "—"}</Text>
-          <Text style={[s.tableCell, { width: colW.qty, textAlign: "center" }]}>{item.quantity}</Text>
+          <Text style={[s.tableCell, { width: colW.qty, textAlign: "center" }]}>{String(toNumber(item.quantity))}</Text>
           <Text style={[s.tableCell, { width: colW.price, textAlign: "right" }]}>{fmt(item.unitPrice)}</Text>
-          <Text style={[s.tableCell, { width: colW.tax, textAlign: "center", color: "#6b7280" }]}>{item.taxRate}%</Text>
+          <Text style={[s.tableCell, { width: colW.tax, textAlign: "center", color: "#6b7280" }]}>
+            {`${toNumber(item.taxRate)}%`}
+          </Text>
           <Text style={[s.tableCell, { width: colW.amt, textAlign: "right", fontFamily: "Helvetica-Bold" }]}>
-            {fmt(item.quantity * item.unitPrice)}
+            {fmt(toNumber(item.quantity) * toNumber(item.unitPrice))}
           </Text>
         </View>
       ))}
