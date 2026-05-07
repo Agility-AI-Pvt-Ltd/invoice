@@ -6,20 +6,25 @@ import { redirect } from "next/navigation";
 import { getSession } from "../../../lib/auth";
 
 const onboardingSchema = z.object({
-  companyName: z.string().min(2, { message: "Company Name must be at least 2 characters" }),
+  companyName: z
+    .string()
+    .min(2, { message: "Company Name must be at least 2 characters" }),
   gstin: z
     .string()
     .optional()
     .refine(
       (val) =>
-        !val || /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(val),
-      { message: "Invalid GSTIN format" }
+        !val ||
+        /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(val),
+      { message: "Invalid GSTIN format" },
     ),
   stateCode: z
     .string()
     .min(1, { message: "State Code is required" })
     .max(2, { message: "Invalid State Code" }),
-  address: z.string().min(5, { message: "Address must be at least 5 characters" }),
+  address: z
+    .string()
+    .min(5, { message: "Address must be at least 5 characters" }),
 });
 
 type OnboardingState = {
@@ -34,7 +39,7 @@ type OnboardingState = {
 
 export async function onboardUser(
   _prevState: OnboardingState,
-  formData: FormData
+  formData: FormData,
 ): Promise<OnboardingState> {
   const user = await getSession();
 
@@ -89,7 +94,9 @@ export async function onboardUser(
       }),
     ]);
   } catch {
-    return { message: "An error occurred during onboarding. Please try again." };
+    return {
+      message: "An error occurred during onboarding. Please try again.",
+    };
   }
 
   redirect("/dashboard");

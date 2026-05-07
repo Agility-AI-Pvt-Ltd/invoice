@@ -111,3 +111,16 @@
 .animate-in {
   animation: fadeIn 0.4s ease-out forwards;
 }
+
+/* Keep native date picker icon visible across themes */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: brightness(0) saturate(100%);
+  opacity: 0.8;
+  cursor: pointer;
+}
+
+[data-theme='dark'] input[type="date"]::-webkit-calendar-picker-indicator,
+[data-theme='midnight'] input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(1.1);
+  opacity: 0.95;
+}

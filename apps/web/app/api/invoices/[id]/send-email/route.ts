@@ -4,12 +4,11 @@ import { getSession } from "@/lib/auth";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { buildPDF } from "@/lib/pdf-templates";
 import nodemailer from "nodemailer";
-import { Resend } from "resend";
 import { checkAuthRateLimit } from "@/lib/ratelimit";
-import { verifyOrgAccess, createErrorResponse, logApiAction } from "@/lib/api-utils";
+import { verifyOrgAccess, createErrorResponse } from "@/lib/api-utils";
 
 export async function POST(
-  req: Request,
+  _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -60,6 +59,12 @@ export async function POST(
         { status: 400 }
       );
     }
+    if (!emailCfg.smtpHost || !emailCfg.smtpUser || !emailCfg.smtpPass) {
+      return NextResponse.json(
+        { error: "SMTP is not fully configured. Set SMTP Host, User, and Password in Settings → Email Delivery." },
+        { status: 400 }
+      );
+    }
 
     const paymentLink = invoice.paymentLinks[0]?.shortUrl;
     const html = buildEmailHtml(invoice, paymentLink);
@@ -69,57 +74,25 @@ export async function POST(
     const pdfDoc = buildPDF(invoice as any, (invoice.organization as any).defaultTemplate || "modern");
     const pdfBuffer = await renderToBuffer(pdfDoc);
 
-    if (emailCfg.provider === "RESEND" && emailCfg.apiKey) {
-      const resend = new Resend(emailCfg.apiKey);
-      await resend.emails.send({
-        from: `${emailCfg.fromName} <${emailCfg.fromEmail}>`,
-        to: [toEmail],
-        subject,
-        html,
-        attachments: [
-          {
-            filename: `${invoice.invoiceNumber}.pdf`,
-            content: pdfBuffer,
-          },
-        ],
-      });
-    } else if (emailCfg.provider === "SMTP" && emailCfg.smtpHost) {
-      const transporter = nodemailer.createTransport({
-        host: emailCfg.smtpHost,
-        port: emailCfg.smtpPort || 587,
-        secure: (emailCfg.smtpPort || 587) === 465,
-        auth: { user: emailCfg.smtpUser || undefined, pass: emailCfg.smtpPass || undefined },
-      });
-      await transporter.sendMail({
-        from: `${emailCfg.fromName} <${emailCfg.fromEmail}>`,
-        to: toEmail, subject, html,
-        attachments: [
-          {
-            filename: `${invoice.invoiceNumber}.pdf`,
-            content: pdfBuffer,
-          },
-        ],
-      });
-    } else if (emailCfg.provider === "SENDGRID" && emailCfg.apiKey) {
-      const res = await fetch("https://api.sendgrid.com/v3/mail/send", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${emailCfg.apiKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          personalizations: [{ to: [{ email: toEmail }] }],
-          from: { email: emailCfg.fromEmail, name: emailCfg.fromName },
-          subject,
-          content: [{ type: "text/html", value: html }],
-          attachments: [
-            {
-              content: pdfBuffer.toString("base64"),
-              type: "application/pdf",
-              filename: `${invoice.invoiceNumber}.pdf`,
-            },
-          ],
-        }),
-      });
-      if (!res.ok) throw new Error("SendGrid error: " + (await res.text()));
-    }
+    const transporter = nodemailer.createTransport({
+      host: emailCfg.smtpHost,
+      port: emailCfg.smtpPort || 587,
+      secure: (emailCfg.smtpPort || 587) === 465,
+      auth: { user: emailCfg.smtpUser, pass: emailCfg.smtpPass },
+    });
+
+    await transporter.sendMail({
+      from: `${emailCfg.fromName} <${emailCfg.fromEmail}>`,
+      to: toEmail,
+      subject,
+      html,
+      attachments: [
+        {
+          filename: `${invoice.invoiceNumber}.pdf`,
+          content: pdfBuffer,
+        },
+      ],
+    });
 
     // Mark as SENT + log
     await prisma.$transaction([
@@ -130,7 +103,7 @@ export async function POST(
           entity: "Invoice",
           entityId: id,
           action: "EMAIL_SENT",
-          meta: { to: toEmail, provider: emailCfg.provider },
+          meta: { to: toEmail, provider: "SMTP" },
         },
       }),
     ]);
