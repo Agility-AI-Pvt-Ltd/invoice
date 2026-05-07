@@ -1,12 +1,17 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@repo/db';
-import { getSession } from '../../../lib/auth';
+import { NextResponse } from "next/server";
+import { prisma } from "@repo/db";
+import { getSession } from "../../../lib/auth";
 import {
   createCustomerSchema,
   validateRequestBody,
   type CreateCustomerInput,
-} from '@/lib/validation-schemas';
-import { ApiErrors, createErrorResponse, verifyOrgAccess, logApiAction } from '@/lib/api-utils';
+} from "@/lib/validation-schemas";
+import {
+  ApiErrors,
+  createErrorResponse,
+  verifyOrgAccess,
+  logApiAction,
+} from "@/lib/api-utils";
 
 export async function POST(request: Request) {
   try {
@@ -17,7 +22,7 @@ export async function POST(request: Request) {
     if (!orgAccess.hasAccess) {
       return NextResponse.json(
         { error: orgAccess.error.message },
-        { status: orgAccess.error.statusCode }
+        { status: orgAccess.error.statusCode },
       );
     }
 
@@ -42,7 +47,7 @@ export async function POST(request: Request) {
     if (existingCustomer) {
       return NextResponse.json(
         { error: `Customer "${data.name}" already exists` },
-        { status: 409 }
+        { status: 409 },
       );
     }
 
@@ -61,12 +66,12 @@ export async function POST(request: Request) {
     });
 
     // Log action
-    await logApiAction(orgId, 'Customer', customer.id, 'CREATED', {
+    await logApiAction(orgId, "Customer", customer.id, "CREATED", {
       name: customer.name,
     });
 
     return NextResponse.json(customer, { status: 201 });
   } catch (err) {
-    return createErrorResponse(err, 'POST /api/customers');
+    return createErrorResponse(err, "POST /api/customers");
   }
 }

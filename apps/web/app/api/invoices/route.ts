@@ -1,15 +1,15 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@repo/db';
-import { getSession } from '../../../lib/auth';
-import { computeInvoiceTotals, validateItems } from '../../../lib/gst';
-import { buildInvoiceItemCreates } from '@/lib/domain/inventory';
+import { NextResponse } from "next/server";
+import { prisma } from "@repo/db";
+import { getSession } from "../../../lib/auth";
+import { computeInvoiceTotals, validateItems } from "../../../lib/gst";
+import { buildInvoiceItemCreates } from "@/lib/domain/inventory";
 
 export async function POST(request: Request) {
   try {
     const user = await getSession();
     const organization = user?.ownedOrgs?.[0];
     if (!organization) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const body = await request.json();
@@ -26,29 +26,50 @@ export async function POST(request: Request) {
       items,
     } = body;
 
-    if (!invoiceNumber || !issueDate || !dueDate || !customerNameOrId || !items || items.length === 0) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    if (
+      !invoiceNumber ||
+      !issueDate ||
+      !dueDate ||
+      !customerNameOrId ||
+      !items ||
+      items.length === 0
+    ) {
+      return NextResponse.json(
+        { error: "Missing required fields" },
+        { status: 400 },
+      );
     }
 
     if (new Date(dueDate) < new Date(issueDate)) {
-      return NextResponse.json({ error: 'Due date cannot be before issue date' }, { status: 400 });
+      return NextResponse.json(
+        { error: "Due date cannot be before issue date" },
+        { status: 400 },
+      );
     }
 
     const itemError = validateItems(items);
-    if (itemError) return NextResponse.json({ error: itemError }, { status: 400 });
+    if (itemError)
+      return NextResponse.json({ error: itemError }, { status: 400 });
 
     // Resolve customer: by ID → by exact name → create
     let customer =
-      (await prisma.customer.findFirst({
-        where: { id: customerNameOrId, organizationId: organization.id },
-      }).catch(() => null)) ??
-      (await prisma.customer.findFirst({
-        where: { name: customerNameOrId, organizationId: organization.id },
-      }).catch(() => null));
+      (await prisma.customer
+        .findFirst({
+          where: { id: customerNameOrId, organizationId: organization.id },
+        })
+        .catch(() => null)) ??
+      (await prisma.customer
+        .findFirst({
+          where: { name: customerNameOrId, organizationId: organization.id },
+        })
+        .catch(() => null));
 
     if (!customer) {
       if (!customerStateCode && !organization.stateCode) {
-        return NextResponse.json({ error: 'Customer state code is required for new customers' }, { status: 400 });
+        return NextResponse.json(
+          { error: "Customer state code is required for new customers" },
+          { status: 400 },
+        );
       }
       customer = await prisma.customer.create({
         data: {
@@ -64,8 +85,14 @@ export async function POST(request: Request) {
 
     const effectivePlaceOfSupply = placeOfSupply || customer.stateCode;
     const isInterState = organization.stateCode !== effectivePlaceOfSupply;
-    const { subTotal, cgstTotal, sgstTotal, igstTotal, grandTotal, processedItems } =
-      computeInvoiceTotals(items, isInterState);
+    const {
+      subTotal,
+      cgstTotal,
+      sgstTotal,
+      igstTotal,
+      grandTotal,
+      processedItems,
+    } = computeInvoiceTotals(items, isInterState);
 
     const invoice = await prisma.$transaction(async (tx) => {
       // Auto-save new products inline (best-effort, non-blocking)
@@ -92,7 +119,7 @@ export async function POST(request: Request) {
         tx,
         organization.id,
         items,
-        processedItems
+        processedItems,
       );
 
       return tx.invoice.create({
@@ -109,29 +136,37 @@ export async function POST(request: Request) {
           sgstTotal,
           igstTotal,
           total: grandTotal,
-          status: 'DRAFT',
+          status: "DRAFT",
           items: { create: itemCreates },
         },
         include: { items: true, customer: true },
       });
     });
 
-    await prisma.activityLog.create({
-      data: {
-        organizationId: organization.id,
-        entity: 'Invoice',
-        entityId: invoice.id,
-        action: 'CREATED',
-        meta: { invoiceNumber, total: grandTotal },
-      },
-    }).catch(() => {});
+    await prisma.activityLog
+      .create({
+        data: {
+          organizationId: organization.id,
+          entity: "Invoice",
+          entityId: invoice.id,
+          action: "CREATED",
+          meta: { invoiceNumber, total: grandTotal },
+        },
+      })
+      .catch(() => {});
 
     return NextResponse.json(invoice, { status: 201 });
   } catch (error: any) {
-    console.error('[invoices/create]', error);
-    if (error.code === 'P2002') {
-      return NextResponse.json({ error: 'Invoice number already exists.' }, { status: 409 });
+    console.error("[invoices/create]", error);
+    if (error.code === "P2002") {
+      return NextResponse.json(
+        { error: "Invoice number already exists." },
+        { status: 409 },
+      );
     }
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }

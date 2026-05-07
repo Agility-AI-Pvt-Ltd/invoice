@@ -22,7 +22,7 @@ type LoginState = {
 
 export async function loginUser(
   _prevState: LoginState,
-  formData: FormData
+  formData: FormData,
 ): Promise<LoginState> {
   const validatedFields = loginSchema.safeParse({
     email: formData.get("email"),
@@ -42,10 +42,13 @@ export async function loginUser(
   const { email, password } = validatedFields.data;
 
   const headerStore = await headers();
-  const ip = headerStore.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "anonymous";
+  const ip =
+    headerStore.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "anonymous";
   const rl = await checkAuthRateLimit(`login:${ip}`);
   if (!rl.allowed) {
-    return { message: `Too many login attempts. Try again in ${rl.retryAfter}s.` };
+    return {
+      message: `Too many login attempts. Try again in ${rl.retryAfter}s.`,
+    };
   }
 
   let redirectPath = "/dashboard";

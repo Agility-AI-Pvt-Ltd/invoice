@@ -1,10 +1,10 @@
-import { cookies } from 'next/headers';
-import { prisma } from '@repo/db';
-import { redirect } from 'next/navigation';
+import { cookies } from "next/headers";
+import { prisma } from "@repo/db";
+import { redirect } from "next/navigation";
 
 async function getUserId() {
   const cookieStore = await cookies();
-  return cookieStore.get('userId')?.value ?? null;
+  return cookieStore.get("userId")?.value ?? null;
 }
 
 /** Keep `ownedOrgs` fields minimal so auth queries stay valid before optional migrations (e.g. inventory columns). */
@@ -35,15 +35,15 @@ export async function getSession() {
 
 export async function requireAuth() {
   const userId = await getUserId();
-  if (!userId) redirect('/login');
+  if (!userId) redirect("/login");
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: USER_SELECT,
   });
 
-  if (!user) redirect('/login');
-  if (!user.isOnboarded) redirect('/onboarding');
+  if (!user) redirect("/login");
+  if (!user.isOnboarded) redirect("/onboarding");
 
   return user;
 }
