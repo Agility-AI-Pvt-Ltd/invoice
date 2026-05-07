@@ -337,7 +337,7 @@ export default function HeroSection({
           <h1 className="hero-heading">
             The <em>operating system</em>
             <br />
-            for your business
+            for your business.
           </h1>
 
           <p className="hero-sub">
