@@ -33,11 +33,40 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - id: auth
+      - name: Validate GCP auth inputs
+        shell: bash
+        run: |
+          has_wif=false
+          has_json=false
+          if [[ -n "${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}" && -n "${{ secrets.GCP_SERVICE_ACCOUNT }}" ]]; then
+            has_wif=true
+          fi
+          if [[ -n "${{ secrets.GCP_SA_KEY }}" ]]; then
+            has_json=true
+          fi
+
+          if [[ "$has_wif" == true && "$has_json" == true ]]; then
+            echo "Provide either WIF secrets (GCP_WORKLOAD_IDENTITY_PROVIDER + GCP_SERVICE_ACCOUNT) or GCP_SA_KEY, not both."
+            exit 1
+          fi
+          if [[ "$has_wif" == false && "$has_json" == false ]]; then
+            echo "Missing GCP auth secrets. Configure WIF secrets or GCP_SA_KEY."
+            echo "Note: secrets are not available to workflows from forks/Dependabot by default."
+            exit 1
+          fi
+
+      - id: auth-wif
+        if: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && secrets.GCP_SERVICE_ACCOUNT != '' }}
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - id: auth-json
+        if: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER == '' && secrets.GCP_SERVICE_ACCOUNT == '' && secrets.GCP_SA_KEY != '' }}
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - uses: google-github-actions/setup-gcloud@v2
 
