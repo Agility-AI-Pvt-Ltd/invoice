@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Download, Send, IndianRupee, X, Loader2,
-  CheckCircle2, AlertCircle, Clock, Link2, Mail,
+  CheckCircle2, AlertCircle, Clock, Link2, Mail, MessageSquare,
 } from "lucide-react";
 
 type InvoiceStatus = "DRAFT" | "SENT" | "PARTIALLY_PAID" | "PAID" | "OVERDUE" | "CANCELLED";
@@ -84,7 +84,7 @@ function TemplatePicker({
   onClose,
 }: {
   currentTemplate: string;
-  onDownload: (template: string) => void;
+  onDownload: (template: string) => Promise<void>;
   onClose: () => void;
 }) {
   const [selected, setSelected] = useState(currentTemplate);
@@ -147,6 +147,7 @@ function PaymentModal({
   onClose: () => void; onSuccess: (newStatus: string) => void;
 }) {
   const remaining = total - paid;
+  const pct = total > 0 ? Math.round((paid / total) * 100) : 0;
   const [amount, setAmount] = useState(remaining.toFixed(2));
   const [method, setMethod] = useState("UPI");
   const [notes, setNotes] = useState("");
@@ -160,7 +161,7 @@ function PaymentModal({
 
   const handleSubmit = async () => {
     const amt = parseFloat(amount);
-    if (!amt || amt <= 0 || amt > remaining) {
+    if (!amt || amt <= 0 || amt > remaining + 0.01) {
       setErr(`Amount must be between ₹0.01 and ₹${remaining.toFixed(2)}`);
       return;
     }
@@ -168,7 +169,17 @@ function PaymentModal({
     setErr("");
     const res = await fetch(`/api/invoices/${invoiceId}/payment`, {
       method: "POST",
-      headers: { "Content-Type":    <div className="fixed inset-0 z-50 flex items-center justify-center animate-in">
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ amount: amt, method, notes }),
+    });
+    const data = await res.json();
+    if (!res.ok) { setErr(data.error || "Failed to record payment"); setLoading(false); return; }
+    setLoading(false);
+    onSuccess(data.newStatus);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center animate-in">
       <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-card rounded-2xl shadow-xl w-full max-w-sm mx-4 border border-border">
         {/* Header */}
@@ -263,12 +274,6 @@ function PaymentModal({
           </button>
         </div>
       </div>
-    </div>00 transition-colors disabled:opacity-60">
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <IndianRupee className="w-4 h-4" />}
-            {parseFloat(amount) >= remaining ? "Mark as Fully Paid" : "Record Partial Payment"}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
@@ -297,24 +302,14 @@ export default function InvoiceActions({
   const [currentStatus, setCurrentStatus] = useState<InvoiceStatus>(status);
   const [showPayment, setShowPayment] = useState(false);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
-  const [updatingStatus, setUpdatingStatus] = useState<string | null>(null);
   const [generatingLink, setGeneratingLink] = useState(false);
   const [paymentLinkUrl, setPaymentLinkUrl] = useState<string | null>(null);
   const [sendingEmail, setSendingEmail] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
+  const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
+  const [whatsAppSent, setWhatsAppSent] = useState(false);
 
   const cfg = STATUS_CONFIG[currentStatus];
-
-  const updateStatus = async (newStatus: string) => {
-    setUpdatingStatus(newStatus);
-    const res = await fetch(`/api/invoices/${invoiceId}/status`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: newStatus }),
-    });
-    if (res.ok) setCurrentStatus(newStatus as InvoiceStatus);
-    setUpdatingStatus(null);
-  };
 
   const downloadPDF = async (template: string) => {
     const res = await fetch(`/api/invoices/${invoiceId}/pdf?template=${template}`);
@@ -334,10 +329,10 @@ export default function InvoiceActions({
     const res = await fetch(`/api/invoices/${invoiceId}/payment-link`, { method: "POST" });
     const data = await res.json();
     if (!res.ok) { alert(data.error || "Failed to generate payment link"); setGeneratingLink(false); return; }
-    setPaymentLinkUrl(data.shortUrl);
+    if (data.shortUrl) setPaymentLinkUrl(data.shortUrl);
     if (!data.alreadyExists) setCurrentStatus("SENT");
     setGeneratingLink(false);
-    await navigator.clipboard.writeText(data.shortUrl).catch(() => {});
+    navigator.clipboard.writeText(data.shortUrl).catch(() => {});
   };
 
   const sendEmail = async () => {
@@ -348,6 +343,21 @@ export default function InvoiceActions({
     setEmailSent(true);
     setSendingEmail(false);
     setTimeout(() => setEmailSent(false), 4000);
+  };
+
+  const sendWhatsApp = async () => {
+    setSendingWhatsApp(true);
+    const res = await fetch(`/api/invoices/${invoiceId}/send-whatsapp`, { method: "POST" });
+    const data = await res.json();
+    if (!res.ok) { alert(data.error || "Failed to send WhatsApp"); setSendingWhatsApp(false); return; }
+    
+    if (data.fallback && data.url) {
+      window.open(data.url, "_blank");
+    }
+    
+    setWhatsAppSent(true);
+    setSendingWhatsApp(false);
+    setTimeout(() => setWhatsAppSent(false), 4000);
   };
 
   const remaining = total - paid;
@@ -394,10 +404,17 @@ export default function InvoiceActions({
         <button onClick={sendEmail} disabled={sendingEmail || emailSent}
           className="flex items-center gap-1.5 px-3 py-1.5 border border-border text-xs text-foreground rounded-xl hover:bg-secondary transition-all disabled:opacity-60 font-bold">
           {sendingEmail ? <Loader2 className="w-3 h-3 animate-spin" /> : <Mail className="w-3 h-3" />}
-          {emailSent ? "Sent ✓" : "Send Email"}
+          {emailSent ? "Email Sent ✓" : "Send Email"}
         </button>
 
-        {(currentStatus === "SENT" || currentStatus === "PARTIALLY_PAID" || currentStatus === "OVERDUE") && remaining > 0 && (
+        {/* Send WhatsApp */}
+        <button onClick={sendWhatsApp} disabled={sendingWhatsApp || whatsAppSent}
+          className="flex items-center gap-1.5 px-3 py-1.5 border border-border text-xs text-foreground rounded-xl hover:bg-secondary transition-all disabled:opacity-60 font-bold">
+          {sendingWhatsApp ? <Loader2 className="w-3 h-3 animate-spin" /> : <MessageSquare className="w-3 h-3 text-green-600" />}
+          {whatsAppSent ? "WA Sent ✓" : "WhatsApp"}
+        </button>
+
+        {(currentStatus === "DRAFT" || currentStatus === "SENT" || currentStatus === "PARTIALLY_PAID" || currentStatus === "OVERDUE") && remaining > 0 && (
           <button onClick={() => setShowPayment(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 border border-border text-xs text-foreground rounded-xl hover:bg-secondary transition-all font-bold">
             <IndianRupee className="w-3 h-3 text-primary" />

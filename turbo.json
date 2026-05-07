@@ -1,6 +1,17 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
   "ui": "tui",
+  "globalEnv": [
+    "NODE_ENV",
+    "DATABASE_URL",
+    "NEXT_PUBLIC_APP_URL",
+    "CRON_SECRET",
+    "GCS_BUCKET_NAME",
+    "GCS_SIGN_UPLOAD_MAX_BYTES",
+    "GCS_SIGN_UPLOAD_TTL_MS",
+    "UPSTASH_REDIS_REST_URL",
+    "UPSTASH_REDIS_REST_TOKEN"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

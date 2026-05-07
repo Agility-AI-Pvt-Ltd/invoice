@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@repo/db";
-import { getSession } from "../../../../../lib/auth";
+import { getSession } from "@/lib/auth";
 import { renderToBuffer } from "@react-pdf/renderer";
-import { buildPDF } from "../../../../../lib/pdf-templates";
+import { buildPDF } from "@/lib/pdf-templates";
 
 export async function GET(
   req: Request,
@@ -12,10 +12,11 @@ export async function GET(
     const { id } = await params;
     const { searchParams } = new URL(req.url);
     const user = await getSession();
-    if (!user || user.ownedOrgs.length === 0) {
+    const organizationId = user?.ownedOrgs?.[0]?.id;
+
+    if (!organizationId || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const organizationId = user.ownedOrgs[0].id;
 
     const invoice = await prisma.invoice.findUnique({
       where: { id, organizationId },
@@ -31,19 +32,41 @@ export async function GET(
     }
 
     // Query param overrides org default (user picked in UI)
-    const template = searchParams.get("template") ?? (invoice.organization as any).defaultTemplate ?? "modern";
+    const allowedTemplates = ["modern", "classic", "minimal"];
+    const requestedTemplate = searchParams.get("template");
+    const template =
+      requestedTemplate && allowedTemplates.includes(requestedTemplate)
+        ? requestedTemplate
+        : (invoice.organization as any).defaultTemplate ?? "modern";
+
+    if (!allowedTemplates.includes(template)) {
+      return NextResponse.json(
+        { error: "Invalid template specified" },
+        { status: 400 }
+      );
+    }
 
     const pdfDoc = buildPDF(invoice as any, template);
     const buffer = await renderToBuffer(pdfDoc);
 
-    return new Response(buffer, {
+    // Set proper caching headers
+    return new Response(new Uint8Array(buffer), {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `attachment; filename="${invoice.invoiceNumber}.pdf"`,
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
       },
     });
   } catch (err: any) {
-    console.error("PDF generation error:", err);
-    return NextResponse.json({ error: "PDF generation failed" }, { status: 500 });
+    console.error("PDF generation error:", {
+      message: err?.message,
+      stack: err?.stack,
+    });
+    return NextResponse.json(
+      { error: "PDF generation failed" },
+      { status: 500 }
+    );
   }
 }

@@ -22,7 +22,7 @@ export default async function EditInvoicePage({ params }: { params: Promise<{ id
     }),
     prisma.product.findMany({
       where: { organizationId },
-      select: { id: true, name: true, price: true, hsnCode: true, taxRate: true },
+      select: { id: true, name: true, price: true, hsnCode: true, taxRate: true, productKind: true },
       orderBy: { name: 'asc' },
     }),
     prisma.organization.findUnique({ where: { id: organizationId } }),
@@ -52,17 +52,18 @@ export default async function EditInvoicePage({ params }: { params: Promise<{ id
   const existingData = {
     id: invoice.id,
     invoiceNumber: invoice.invoiceNumber,
-    issueDate: invoice.issueDate.toISOString().split('T')[0],
-    dueDate: invoice.dueDate.toISOString().split('T')[0],
+    issueDate: invoice.issueDate.toISOString().slice(0, 10),
+    dueDate: invoice.dueDate.toISOString().slice(0, 10),
     customerNameOrId: invoice.customer.id,
     placeOfSupply: invoice.placeOfSupply || '',
     notes: invoice.notes || '',
     items: invoice.items.map((item) => ({
+      productId: item.productId,
       description: item.description,
       hsnCode: item.hsnCode || '',
       quantity: item.quantity,
       unitPrice: item.unitPrice,
-      taxRate: item.taxRate,
+      taxRate: Number(item.taxRate),
     })),
   };
 

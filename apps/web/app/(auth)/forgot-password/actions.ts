@@ -20,7 +20,7 @@ export async function sendPasswordReset(
 
   if (!validatedFields.success) {
     return {
-      errors: validatedFields.error.flatten().fieldErrors as ForgotPasswordState["errors"],
+      errors: validatedFields.error.flatten().fieldErrors as { email?: string[] },
     };
   }
 

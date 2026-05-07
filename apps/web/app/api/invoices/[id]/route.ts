@@ -1,12 +1,8 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@repo/db';
-import { getSession } from '../../../../../lib/auth';
-
-function calculateGST(amount: number, taxRate: number, isInterState: boolean) {
-  const totalTax = (amount * taxRate) / 100;
-  if (isInterState) return { cgst: 0, sgst: 0, igst: totalTax };
-  return { cgst: totalTax / 2, sgst: totalTax / 2, igst: 0 };
-}
+import { getSession } from '@/lib/auth';
+import { computeInvoiceTotals, validateItems } from '@/lib/gst';
+import { buildInvoiceItemCreates } from '@/lib/domain/inventory';
 
 // GET /api/invoices/[id] — fetch single invoice (for edit form)
 export async function GET(
@@ -15,10 +11,10 @@ export async function GET(
 ) {
   const { id } = await params;
   const user = await getSession();
-  if (!user || user.ownedOrgs.length === 0) {
+  const organizationId = user?.ownedOrgs?.[0]?.id;
+  if (!organizationId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const organizationId = user.ownedOrgs[0].id;
 
   const invoice = await prisma.invoice.findUnique({
     where: { id, organizationId },
@@ -29,7 +25,7 @@ export async function GET(
   return NextResponse.json(invoice);
 }
 
-// PUT /api/invoices/[id] — update invoice (only DRAFT invoices)
+// PUT /api/invoices/[id] — update invoice (only non-PAID/CANCELLED invoices)
 export async function PUT(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -37,10 +33,10 @@ export async function PUT(
   try {
     const { id } = await params;
     const user = await getSession();
-    if (!user || user.ownedOrgs.length === 0) {
+    const organization = user?.ownedOrgs?.[0];
+    if (!organization) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    const organization = user.ownedOrgs[0];
 
     const existing = await prisma.invoice.findUnique({
       where: { id, organizationId: organization.id },
@@ -60,50 +56,45 @@ export async function PUT(
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
+    if (new Date(dueDate) < new Date(issueDate)) {
+      return NextResponse.json({ error: 'Due date cannot be before issue date' }, { status: 400 });
+    }
+
+    const itemError = validateItems(items);
+    if (itemError) return NextResponse.json({ error: itemError }, { status: 400 });
+
     // Resolve customer
     let customer =
       (await prisma.customer.findFirst({ where: { id: customerNameOrId, organizationId: organization.id } }).catch(() => null)) ??
       (await prisma.customer.findFirst({ where: { name: customerNameOrId, organizationId: organization.id } }).catch(() => null));
 
     if (!customer) {
+      if (!customerStateCode && !organization.stateCode) {
+        return NextResponse.json({ error: 'Customer state code is required for new customers' }, { status: 400 });
+      }
       customer = await prisma.customer.create({
         data: {
           organizationId: organization.id,
           name: customerNameOrId,
           stateCode: customerStateCode || organization.stateCode,
+          isRegistered: false,
         },
       });
     }
 
     const effectivePlaceOfSupply = placeOfSupply || customer.stateCode;
     const isInterState = organization.stateCode !== effectivePlaceOfSupply;
-
-    let subTotal = 0, cgstTotal = 0, sgstTotal = 0, igstTotal = 0;
-    const processedItems = items.map((item: any) => {
-      const itemSub = item.quantity * item.unitPrice;
-      const taxes = calculateGST(itemSub, item.taxRate || 0, isInterState);
-      subTotal += itemSub;
-      cgstTotal += taxes.cgst;
-      sgstTotal += taxes.sgst;
-      igstTotal += taxes.igst;
-      return {
-        description: item.description,
-        hsnCode: item.hsnCode || null,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        taxRate: item.taxRate || 0,
-        cgstAmount: taxes.cgst,
-        sgstAmount: taxes.sgst,
-        igstAmount: taxes.igst,
-        total: itemSub + taxes.cgst + taxes.sgst + taxes.igst,
-      };
-    });
-
-    const grandTotal = subTotal + cgstTotal + sgstTotal + igstTotal;
+    const { subTotal, cgstTotal, sgstTotal, igstTotal, grandTotal, processedItems } =
+      computeInvoiceTotals(items, isInterState);
 
     const updated = await prisma.$transaction(async (tx) => {
-      // Delete old items and recreate
       await tx.invoiceItem.deleteMany({ where: { invoiceId: id } });
+      const itemCreates = await buildInvoiceItemCreates(
+        tx,
+        organization.id,
+        items,
+        processedItems
+      );
       return tx.invoice.update({
         where: { id },
         data: {
@@ -118,13 +109,12 @@ export async function PUT(
           sgstTotal,
           igstTotal,
           total: grandTotal,
-          items: { create: processedItems },
+          items: { create: itemCreates },
         },
         include: { items: true, customer: true },
       });
     });
 
-    // Log
     await prisma.activityLog.create({
       data: {
         organizationId: organization.id,
@@ -137,7 +127,7 @@ export async function PUT(
 
     return NextResponse.json(updated);
   } catch (error: any) {
-    console.error('Failed to update invoice:', error);
+    console.error('[invoices/update]', error);
     if (error.code === 'P2002') {
       return NextResponse.json({ error: 'Invoice number already exists.' }, { status: 409 });
     }
@@ -145,30 +135,45 @@ export async function PUT(
   }
 }
 
-// DELETE /api/invoices/[id] — cancel/delete DRAFT invoices only
+// DELETE /api/invoices/[id] — soft-cancel only; never hard-delete financial records
 export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params;
-  const user = await getSession();
-  if (!user || user.ownedOrgs.length === 0) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-  const organizationId = user.ownedOrgs[0].id;
+  try {
+    const { id } = await params;
+    const user = await getSession();
+    const organizationId = user?.ownedOrgs?.[0]?.id;
+    if (!organizationId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-  const existing = await prisma.invoice.findUnique({ where: { id, organizationId } });
-  if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  if (existing.status === 'PAID') {
-    return NextResponse.json({ error: 'Cannot delete a paid invoice.' }, { status: 400 });
-  }
+    const existing = await prisma.invoice.findUnique({ where: { id, organizationId } });
+    if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    if (existing.status === 'PAID') {
+      return NextResponse.json({ error: 'Cannot cancel a paid invoice.' }, { status: 400 });
+    }
+    if (existing.status === 'CANCELLED') {
+      return NextResponse.json({ error: 'Invoice is already cancelled.' }, { status: 400 });
+    }
 
-  // Soft cancel for sent invoices, hard delete for drafts
-  if (existing.status === 'DRAFT') {
-    await prisma.invoice.delete({ where: { id } });
-    return NextResponse.json({ deleted: true });
-  } else {
-    await prisma.invoice.update({ where: { id }, data: { status: 'CANCELLED' } });
+    // Always soft-cancel — financial records must never be hard-deleted
+    await prisma.$transaction([
+      prisma.invoice.update({ where: { id }, data: { status: 'CANCELLED' } }),
+      prisma.activityLog.create({
+        data: {
+          organizationId,
+          entity: 'Invoice',
+          entityId: id,
+          action: 'CANCELLED',
+          meta: { previousStatus: existing.status },
+        },
+      }),
+    ]);
+
     return NextResponse.json({ cancelled: true });
+  } catch (error) {
+    console.error('[invoices/delete]', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

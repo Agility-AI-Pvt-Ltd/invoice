@@ -237,7 +237,7 @@ const GlobalStyles = () => (
   `}</style>
 );
 
-export default function HeroSection({ logoSrc }: { logoSrc?: string }) {
+export default function HeroSection({ logoSrc, brandName = "Invoicely" }: { logoSrc?: string; brandName?: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [videoReady, setVideoReady] = useState(false);
 
@@ -267,13 +267,15 @@ export default function HeroSection({ logoSrc }: { logoSrc?: string }) {
         {/* Navbar */}
 
         <nav className="nav">
-          <a href="#" className="nav-logo">
+          <a href="/" className="nav-logo">
             {logoSrc ? (
-              <img className="nav-logo-icon" src={logoSrc} alt="" />
+              <img className="nav-logo-icon" src={logoSrc} alt={brandName} />
             ) : (
-              <div className="nav-logo-icon" aria-hidden="true" />
+              <>
+                <div className="nav-logo-icon" aria-hidden="true" />
+                {brandName}
+              </>
             )}
-            Invoicely
           </a>
 
           <ul className="nav-links">

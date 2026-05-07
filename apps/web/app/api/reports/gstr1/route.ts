@@ -18,10 +18,10 @@ import { getSession } from '../../../../lib/auth';
  */
 export async function GET(req: Request) {
   const user = await getSession();
-  if (!user || user.ownedOrgs.length === 0) {
+  const organizationId = user?.ownedOrgs?.[0]?.id;
+  if (!organizationId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const organizationId = user.ownedOrgs[0].id;
 
   const { searchParams } = new URL(req.url);
   const monthParam = searchParams.get('month'); // e.g. "2024-03"
@@ -31,7 +31,13 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Provide ?month=YYYY-MM' }, { status: 400 });
   }
 
-  const [year, month] = monthParam.split('-').map(Number);
+  const parts = monthParam.split("-");
+  const year = Number(parts[0]);
+  const month = Number(parts[1]);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
+    return NextResponse.json({ error: "Invalid ?month=YYYY-MM" }, { status: 400 });
+  }
+
   const from = new Date(year, month - 1, 1);
   const to = new Date(year, month, 0, 23, 59, 59); // last day of month
 
@@ -89,17 +95,24 @@ export async function GET(req: Request) {
     legal_name: organization.name,
     period: monthParam,
     total_invoices: invoices.length,
-    total_taxable_value: invoices.reduce((s, i) => s + i.subTotal, 0),
-    total_cgst: invoices.reduce((s, i) => s + i.cgstTotal, 0),
-    total_sgst: invoices.reduce((s, i) => s + i.sgstTotal, 0),
-    total_igst: invoices.reduce((s, i) => s + i.igstTotal, 0),
-    total_invoice_value: invoices.reduce((s, i) => s + i.total, 0),
+    total_taxable_value: invoices.reduce((s, i) => s + Number(i.subTotal), 0),
+    total_cgst: invoices.reduce((s, i) => s + Number(i.cgstTotal), 0),
+    total_sgst: invoices.reduce((s, i) => s + Number(i.sgstTotal), 0),
+    total_igst: invoices.reduce((s, i) => s + Number(i.igstTotal), 0),
+    total_invoice_value: invoices.reduce((s, i) => s + Number(i.total), 0),
   };
 
   if (format === 'csv') {
+    // Sanitize a string for CSV: escape quotes, wrap in quotes, and strip formula-injection prefixes
+    const escapeCSV = (v: any) => {
+      const val = v === null || v === undefined ? '' : String(v);
+      const safe = val.replace(/^[=+\-@\t\r]/, "'$&"); // prepend ' to neutralize Excel formulas
+      return `"${safe.replace(/"/g, '""')}"`;
+    };
+
     const rows: string[] = [];
     rows.push('GSTR-1 Export');
-    rows.push(`GSTIN: ${organization.gstin || 'N/A'},Period: ${monthParam}`);
+    rows.push(`${escapeCSV(`GSTIN: ${organization.gstin || 'N/A'}`)},${escapeCSV(`Period: ${monthParam}`)}`);
     rows.push('');
 
     // B2B section
@@ -107,9 +120,9 @@ export async function GET(req: Request) {
     rows.push('Invoice Number,Invoice Date,Receiver Name,Receiver GSTIN,Place of Supply,Supply Type,Taxable Value,CGST,SGST,IGST,Invoice Value');
     for (const r of b2b) {
       rows.push([
-        r.invoice_number, r.invoice_date, `"${r.receiver_name}"`, r.receiver_gstin,
-        r.place_of_supply, r.supply_type,
-        r.taxable_value.toFixed(2), r.cgst.toFixed(2), r.sgst.toFixed(2), r.igst.toFixed(2), r.invoice_value.toFixed(2)
+        escapeCSV(r.invoice_number), escapeCSV(r.invoice_date), escapeCSV(r.receiver_name), escapeCSV(r.receiver_gstin),
+        escapeCSV(r.place_of_supply), escapeCSV(r.supply_type),
+        Number(r.taxable_value).toFixed(2), Number(r.cgst).toFixed(2), Number(r.sgst).toFixed(2), Number(r.igst).toFixed(2), Number(r.invoice_value).toFixed(2),
       ].join(','));
     }
 
@@ -118,9 +131,9 @@ export async function GET(req: Request) {
     rows.push('Invoice Number,Invoice Date,Receiver Name,Place of Supply,Supply Type,Taxable Value,CGST,SGST,IGST,Invoice Value');
     for (const r of b2c) {
       rows.push([
-        r.invoice_number, r.invoice_date, `"${r.receiver_name}"`,
-        r.place_of_supply, r.supply_type,
-        r.taxable_value.toFixed(2), r.cgst.toFixed(2), r.sgst.toFixed(2), r.igst.toFixed(2), r.invoice_value.toFixed(2)
+        escapeCSV(r.invoice_number), escapeCSV(r.invoice_date), escapeCSV(r.receiver_name),
+        escapeCSV(r.place_of_supply), escapeCSV(r.supply_type),
+        Number(r.taxable_value).toFixed(2), Number(r.cgst).toFixed(2), Number(r.sgst).toFixed(2), Number(r.igst).toFixed(2), Number(r.invoice_value).toFixed(2),
       ].join(','));
     }
 
@@ -133,8 +146,8 @@ export async function GET(req: Request) {
     rows.push(`Total IGST,${summary.total_igst.toFixed(2)}`);
     rows.push(`Total Invoice Value,${summary.total_invoice_value.toFixed(2)}`);
 
-    const csv = rows.join('\n');
-    return new Response(csv, {
+    const csvContent = rows.join('\n');
+    return new Response(csvContent, {
       headers: {
         'Content-Type': 'text/csv',
         'Content-Disposition': `attachment; filename="GSTR1_${organization.gstin || 'export'}_${monthParam}.csv"`,

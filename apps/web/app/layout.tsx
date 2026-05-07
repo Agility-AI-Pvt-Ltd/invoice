@@ -25,13 +25,25 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.variable} ${outfit.variable} font-sans antialiased`}>
-        <ThemeProvider
-          attribute="data-theme"
-          defaultTheme="light"
-          enableSystem
-          disableTransitionOnChange
-        >
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var theme = localStorage.getItem('theme') || 'light';
+                  if (theme === 'system') {
+                    theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+                  }
+                  document.documentElement.setAttribute('data-theme', theme);
+                } catch (e) {}
+              })();
+            `,
+          }}
+        />
+      </head>
+      <body suppressHydrationWarning className={`${inter.variable} ${outfit.variable} font-sans antialiased`}>
+        <ThemeProvider attribute="data-theme" defaultTheme="light">
           {children}
         </ThemeProvider>
       </body>

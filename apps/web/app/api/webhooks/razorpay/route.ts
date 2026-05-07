@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@repo/db";
+import { applyInventoryOnFullPayment } from "@/lib/domain/inventory";
 import { createHmac } from "crypto";
 
 /**
@@ -39,97 +40,199 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing payment_link id" }, { status: 400 });
     }
 
-    // Find our PaymentLink record by externalId
+    // 1. Find the link to identify the organization
     const pl = await prisma.paymentLink.findFirst({
       where: { externalId: paymentLinkId },
       include: { invoice: { include: { organization: true } } },
     });
 
     if (!pl) {
-      // Could be from another system — silently OK
-      return NextResponse.json({ received: true });
+      return NextResponse.json({ received: true, note: "Link not found in our system" });
     }
 
-    // Verify HMAC against the org's webhook secret
-    const orgId = pl.invoice.organizationId;
+    // 2. Load and verify Signature
+    const organizationId = pl.invoice.organizationId;
     const gatewayCfg = await prisma.paymentGatewayConfig.findUnique({
-      where: { organizationId_provider: { organizationId: orgId, provider: "RAZORPAY" } },
+      where: { organizationId_provider: { organizationId, provider: "RAZORPAY" } },
     });
 
-    // Always require webhook secret — never skip verification
     if (!gatewayCfg?.webhookSecret) {
-      console.warn("Razorpay webhook: no webhookSecret configured for org", orgId, "— rejecting");
-      return NextResponse.json({ error: "Webhook secret not configured for this organization" }, { status: 401 });
+      console.error("Razorpay webhook: No secret configured for org", organizationId);
+      return NextResponse.json({ error: "Organization not configured for webhooks" }, { status: 401 });
     }
+
     const expectedSig = createHmac("sha256", gatewayCfg.webhookSecret)
       .update(rawBody)
       .digest("hex");
+
     if (expectedSig !== signature) {
-      console.warn("Razorpay webhook signature mismatch for org", orgId);
-      return NextResponse.json({ error: "Signature mismatch" }, { status: 401 });
+      console.warn("Razorpay webhook signature mismatch for org", organizationId);
+      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
     }
 
-    // Idempotency: don't process the same link twice
-    if (pl.status === "PAID") {
-      return NextResponse.json({ received: true, skipped: "already_paid" });
-    }
+    const invoiceId = pl.invoice.id;
 
-    const invoice = pl.invoice;
-    const existingPayments = await prisma.payment.aggregate({
-      where: { invoiceId: invoice.id },
-      _sum: { amount: true },
-    });
-    const alreadyPaid = existingPayments._sum.amount ?? 0;
-    const totalPaid = alreadyPaid + amount;
-    const newStatus = totalPaid >= invoice.total ? "PAID" : "PARTIALLY_PAID";
+    // 3. Atomic processing in a transaction
+    try {
+      await prisma.$transaction(async (tx) => {
+        const link = await tx.paymentLink.findUnique({
+          where: { id: pl.id },
+        });
 
-    // Atomic update
-    await prisma.$transaction([
-      prisma.payment.create({
-        data: {
-          invoiceId: invoice.id,
-          amount,
-          method: "Online (Razorpay)",
-          notes: `Payment ID: ${razorpayPaymentId}`,
-          gatewayProvider: "RAZORPAY",
-          gatewayPaymentId: razorpayPaymentId,
-          paymentDate: new Date(),
-        },
-      }),
-      prisma.invoice.update({
-        where: { id: invoice.id },
-        data: { status: newStatus as any },
-      }),
-      prisma.paymentLink.update({
-        where: { id: pl.id },
-        data: { status: "PAID", paidAt: new Date() },
-      }),
-      prisma.activityLog.create({
-        data: {
-          organizationId: orgId,
-          entity: "Invoice",
-          entityId: invoice.id,
-          action: "PAYMENT_RECEIVED",
-          meta: {
+        if (!link) {
+          console.warn("Webhook: Payment link not found in transaction", { linkId: pl.id });
+          return;
+        }
+
+        if (link.status !== "PENDING") {
+          console.info("Webhook: Payment link already processed", {
+            linkId: pl.id,
+            status: link.status,
+          });
+          return; // Idempotent response
+        }
+
+        const invoiceRow = await tx.invoice.findUnique({
+          where: { id: invoiceId },
+        });
+
+        if (!invoiceRow) {
+          console.error("Webhook: Invoice not found in transaction", { invoiceId });
+          return;
+        }
+
+        // Duplicate webhook or manual payment settled the invoice first — close the link so Razorpay stops retrying.
+        if (invoiceRow.status === "PAID") {
+          console.warn("Webhook: Invoice already PAID; closing payment link only", { invoiceId });
+          await tx.paymentLink.update({
+            where: { id: pl.id },
+            data: { status: "PAID", paidAt: link.paidAt ?? new Date() },
+          });
+          return;
+        }
+
+        if (invoiceRow.status === "CANCELLED") {
+          console.error("Webhook: Payment captured for CANCELLED invoice — reconcile manually", {
+            invoiceId,
+            paymentLinkId,
+          });
+          await tx.paymentLink.update({
+            where: { id: pl.id },
+            data: { status: "PAID", paidAt: new Date() },
+          });
+          return;
+        }
+
+        // Same Razorpay payment event delivered twice (race) — do not double-book.
+        if (razorpayPaymentId) {
+          const existingPayment = await tx.payment.findFirst({
+            where: { invoiceId, gatewayPaymentId: razorpayPaymentId },
+          });
+          if (existingPayment) {
+            console.info("Webhook: Duplicate gateway payment id; closing link", {
+              invoiceId,
+              razorpayPaymentId,
+            });
+            await tx.paymentLink.update({
+              where: { id: pl.id },
+              data: { status: "PAID", paidAt: link.paidAt ?? new Date() },
+            });
+            return;
+          }
+        }
+
+        // Update payment link status
+        await tx.paymentLink.update({
+          where: { id: pl.id },
+          data: { status: "PAID", paidAt: new Date() },
+        });
+
+        const previousStatus = invoiceRow.status;
+
+        // Calculate totals with precise Decimal math
+        const payments = await tx.payment.aggregate({
+          where: { invoiceId },
+          _sum: { amount: true },
+        });
+        const alreadyPaid = Number(payments._sum.amount ?? 0);
+        const totalPaid = alreadyPaid + amount;
+        const newStatus =
+          totalPaid >= Number(invoiceRow.total) - 0.01 ? "PAID" : "PARTIALLY_PAID";
+
+        // Validate amount is reasonable (within tolerance)
+        const expectedAmount = Number(invoiceRow.total) - alreadyPaid;
+        const amountDiff = Math.abs(amount - expectedAmount);
+        if (amountDiff > 0.01) {
+          console.warn("Webhook: Amount mismatch detected", {
+            expected: expectedAmount,
+            received: amount,
+            difference: amountDiff,
+            invoiceId,
+          });
+          // Log but continue - might be partial payment or rounding
+        }
+
+        // Record payment
+        const payment = await tx.payment.create({
+          data: {
+            invoiceId,
             amount,
-            method: "Razorpay",
+            method: "ONLINE",
+            notes: `Razorpay Link: ${paymentLinkId}`,
+            gatewayProvider: "RAZORPAY",
             gatewayPaymentId: razorpayPaymentId,
-            newStatus,
+            paymentDate: new Date(),
           },
-        },
-      }),
-    ]);
+        });
 
-    console.log(`✅ Razorpay payment processed: Invoice ${invoice.id} → ${newStatus}`);
-    return NextResponse.json({ received: true, invoiceId: invoice.id, newStatus });
+        // Update invoice status
+        await tx.invoice.update({
+          where: { id: invoiceId },
+          data: { status: newStatus },
+        });
+
+        // Apply inventory changes if needed
+        await applyInventoryOnFullPayment(tx, {
+          organizationId,
+          invoiceId,
+          previousStatus,
+          newStatus,
+        });
+
+        // Log the action
+        await tx.activityLog.create({
+          data: {
+            organizationId,
+            entity: "Invoice",
+            entityId: invoiceId,
+            action: "PAYMENT_RECEIVED",
+            meta: {
+              amount,
+              gatewayPaymentId: razorpayPaymentId,
+              newStatus,
+              paymentId: payment.id,
+            },
+          },
+        });
+
+        console.info("Webhook: Payment processed successfully", {
+          invoiceId,
+          paymentId: payment.id,
+          newStatus,
+        });
+      });
+    } catch (err) {
+      console.error("Webhook: Transaction processing failed", {
+        error: err instanceof Error ? err.message : String(err),
+        invoiceId,
+        paymentLinkId,
+        stack: err instanceof Error ? err.stack : undefined,
+      });
+      return NextResponse.json({ error: "Internal processing error" }, { status: 500 });
+    }
+
+    return NextResponse.json({ received: true });
   }
 
-  // ── Handle payment.captured (direct payment, no link) ────────────
-  if (event === "payment.captured") {
-    // For direct payments, we match by amount + customer notes if provided
-    // This is a best-effort match — payment_link.paid is more reliable
-    return NextResponse.json({ received: true, event: "payment.captured", note: "Use payment_link.paid for reliable tracking" });
-  }
-
-  return NextResponse.json({ received: true, event, note: "Unhandled event" });
+  return NextResponse.json({ error: "Unsupported or unhandled event type" }, { status: 400 });
 }

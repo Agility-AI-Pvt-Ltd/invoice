@@ -7,7 +7,7 @@ export default async function Home() {
     <div style={{ position: "relative" }}>
       {/* ── LAYER 1: Hero — sticky background, pinned at z:1 ── */}
       <div style={{ position: "sticky", top: 0, height: "100vh", zIndex: 1 }}>
-        <HeroSection logoSrc="/assets/invoicely.png" />
+        <HeroSection logoSrc="/assets/Invoicely_logo_Final.png" brandName="Agility AI Invoicely" />
       </div>
 
       {/*
