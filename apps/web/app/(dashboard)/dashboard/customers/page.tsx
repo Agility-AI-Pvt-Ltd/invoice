@@ -1,5 +1,6 @@
 import { requireAuth } from '../../../../lib/auth';
 import { prisma } from '@repo/db';
+import type { Customer } from '@prisma/client';
 import Link from 'next/link';
 import { Users, UserPlus, Search, Filter, Download, MoreHorizontal, Pencil } from 'lucide-react';
 import CustomerModal from './CustomerModal';
@@ -13,7 +14,7 @@ export default async function CustomersPage({
   const user = await requireAuth();
   const organizationId = user.ownedOrgs[0]?.id;
 
-  const customers = await prisma.customer.findMany({
+  const customers: Customer[] = await prisma.customer.findMany({
     where: { 
       organizationId,
       OR: q ? [
@@ -114,7 +115,7 @@ export default async function CustomersPage({
                     </td>
                     <td className="px-8 py-6 text-right">
                       <CustomerModal 
-                        customer={c as any}
+                        customer={c}
                         trigger={
                           <button className="p-2 hover:bg-secondary rounded-xl transition-colors text-muted-foreground hover:text-primary flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest">
                             <Pencil className="w-3.5 h-3.5" />

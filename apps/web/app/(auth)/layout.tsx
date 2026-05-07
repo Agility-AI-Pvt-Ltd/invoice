@@ -17,20 +17,15 @@ export default function AuthLayout({
           <Link href="/" className="inline-flex items-center gap-3 mb-12 group">
             <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center shadow-lg shadow-primary/20 transition-transform group-hover:scale-105 overflow-hidden p-0.5">
               <Image
-                src="/assets/invoicely.png"
+                src="/assets/Invoicely_logo_Final.png"
                 alt=""
                 width={40}
                 height={40}
                 className="w-full h-full object-cover"
               />
             </div>
-            <span className="flex flex-col leading-tight">
-              <span className="text-xl font-bold tracking-tight heading-display">
-                Invoicely
-              </span>
-              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                Powered by AgilityAi
-              </span>
+            <span className="text-2xl font-bold tracking-tight heading-display">
+              Agility <span className="text-primary">AI</span>
             </span>
           </Link>
 

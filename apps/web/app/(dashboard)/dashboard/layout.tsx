@@ -44,20 +44,15 @@ export default function DashboardLayout({
           <div className="flex items-center gap-2.5 group cursor-pointer">
             <div className="p-1.5 bg-primary/10 rounded-xl group-hover:bg-primary/20 transition-colors">
               <Image
-                src="/assets/invoicely.png"
+                src="/assets/Invoicely_logo_Final.png"
                 alt=""
                 width={28}
                 height={28}
                 className="rounded-lg object-contain shadow-sm"
               />
             </div>
-            <span className="flex flex-col leading-tight">
-              <span className="text-sm font-bold tracking-tight heading-display text-foreground">
-                Invoicely
-              </span>
-              <span className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
-                Powered by AgilityAi
-              </span>
+            <span className="text-xl font-bold tracking-tight heading-display text-foreground">
+              Agility <span className="text-primary">AI</span>
             </span>
           </div>
         </div>
