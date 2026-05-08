@@ -6,81 +6,38 @@ import {
   X, 
   Plus, 
   Loader2, 
-  UserPlus, 
+  Package, 
   Check, 
   Pencil, 
-  Building2, 
-  Mail, 
-  Phone, 
-  Globe, 
-  MapPin, 
-  FileCheck, 
-  ShieldCheck, 
-  AlertCircle,
-  Briefcase
+  Trash2, 
+  Tags, 
+  IndianRupee, 
+  Info,
+  Hash,
+  Activity,
+  Layers,
+  AlertCircle
 } from "lucide-react";
-import { addCustomer, updateCustomer } from "./actions";
 
-const INDIAN_STATES = [
-  { code: "01", name: "Jammu & Kashmir" },
-  { code: "02", name: "Himachal Pradesh" },
-  { code: "03", name: "Punjab" },
-  { code: "04", name: "Chandigarh" },
-  { code: "05", name: "Uttarakhand" },
-  { code: "06", name: "Haryana" },
-  { code: "07", name: "Delhi" },
-  { code: "08", name: "Rajasthan" },
-  { code: "09", name: "Uttar Pradesh" },
-  { code: "10", name: "Bihar" },
-  { code: "11", name: "Sikkim" },
-  { code: "12", name: "Arunachal Pradesh" },
-  { code: "13", name: "Nagaland" },
-  { code: "14", name: "Manipur" },
-  { code: "15", name: "Mizoram" },
-  { code: "16", name: "Tripura" },
-  { code: "17", name: "Meghalaya" },
-  { code: "18", name: "Assam" },
-  { code: "19", name: "West Bengal" },
-  { code: "20", name: "Jharkhand" },
-  { code: "21", name: "Odisha" },
-  { code: "22", name: "Chhattisgarh" },
-  { code: "23", name: "Madhya Pradesh" },
-  { code: "24", name: "Gujarat" },
-  { code: "26", name: "Dadra & Nagar Haveli and Daman & Diu" },
-  { code: "27", name: "Maharashtra" },
-  { code: "29", name: "Karnataka" },
-  { code: "30", name: "Goa" },
-  { code: "31", name: "Lakshadweep" },
-  { code: "32", name: "Kerala" },
-  { code: "33", name: "Tamil Nadu" },
-  { code: "34", name: "Puducherry" },
-  { code: "35", name: "Andaman & Nicobar Islands" },
-  { code: "36", name: "Telangana" },
-  { code: "37", name: "Andhra Pradesh" },
-  { code: "38", name: "Ladakh" },
-  { code: "97", name: "Other Territory" },
-];
+import { addProduct, updateProduct, deleteProduct } from "./actions";
 
-interface CustomerData {
+interface ProductData {
   id: string;
   name: string;
-  email: string | null;
-  phone: string | null;
-  gstin: string | null;
-  stateCode: string | null;
-  address: string | null;
-  isRegistered: boolean;
-  description: string | null;
+  price: number;
+  hsnCode: string | null;
+  taxRate: number;
+  sku: string | null;
+  productKind: string;
 }
 
-
-export default function CustomerModal({ 
-  customer, 
+export default function ProductModal({ 
+  product, 
   trigger,
   isOpenOverride,
   onCloseOverride
 }: { 
-  customer?: CustomerData;
+  product?: ProductData;
   trigger?: React.ReactNode;
   isOpenOverride?: boolean;
   onCloseOverride?: () => void;
@@ -89,8 +46,6 @@ export default function CustomerModal({
   const [mounted, setMounted] = useState(false);
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
-  const [selectedState, setSelectedState] = useState(customer?.stateCode?.match(/\d+/)?.[0] || "");
-  const [isGstRegistered, setIsGstRegistered] = useState(customer?.isRegistered || false);
 
   const open = isOpenOverride !== undefined ? isOpenOverride : internalOpen;
   const setOpen = (val: boolean) => {
@@ -108,22 +63,32 @@ export default function CustomerModal({
     return () => { document.body.style.overflow = 'unset'; };
   }, [open]);
 
-  const isEdit = !!customer;
+  const isEdit = !!product;
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError("");
     const formData = new FormData(e.currentTarget);
-    formData.set("isRegistered", isGstRegistered ? "true" : "false");
-    
     startTransition(async () => {
       const result = isEdit 
-        ? await updateCustomer(customer.id, formData)
-        : await addCustomer(formData);
+        ? await updateProduct(product.id, formData)
+        : await addProduct(formData);
         
       if (result?.error) {
         setError(result.error);
       } else {
+        setOpen(false);
+        window.location.reload();
+      }
+    });
+  };
+
+  const handleDelete = () => {
+    if (!product || !confirm("Are you sure you want to delete this item?")) return;
+    startTransition(async () => {
+      const result = await deleteProduct(product.id);
+      if (result?.error) setError(result.error);
+      else {
         setOpen(false);
         window.location.reload();
       }
@@ -150,17 +115,16 @@ export default function CustomerModal({
           
           {/* Header */}
           <div className="px-10 py-8 border-b border-border flex items-start justify-between bg-card shrink-0 z-20">
-
             <div className="flex items-center gap-5">
                <div className={`w-14 h-14 rounded-3xl flex items-center justify-center shadow-inner ${isEdit ? 'bg-amber-500/10 text-amber-500' : 'bg-primary/10 text-primary'}`}>
-                  {isEdit ? <Pencil className="w-6 h-6" /> : <UserPlus className="w-6 h-6" />}
+                  {isEdit ? <Pencil className="w-6 h-6" /> : <Package className="w-6 h-6" />}
                </div>
                <div>
                   <h2 className="text-2xl font-black text-foreground tracking-tight leading-none">
-                    {isEdit ? 'Edit Customer' : 'Add Customer'}
+                    {isEdit ? 'Edit Item' : 'New Item'}
                   </h2>
                   <p className="text-xs font-bold text-muted-foreground mt-2">
-                    {isEdit ? 'Refine identity and tax details' : 'Expand your client directory'}
+                    {isEdit ? 'Refine your catalog specifications' : 'Add products or services to your inventory'}
                   </p>
                </div>
             </div>
@@ -177,41 +141,42 @@ export default function CustomerModal({
           <div className="flex-1 overflow-y-auto px-10 py-8 space-y-10">
 
             
-            {/* Identity Group */}
+            {/* General Details */}
             <div className="space-y-6">
               <h3 className="text-[10px] font-black text-primary uppercase tracking-[0.2em] flex items-center gap-2">
-                <Briefcase className="w-3 h-3" /> Core Identity
+                <Tags className="w-3 h-3" /> Core Specifications
               </h3>
               
               <div className="grid grid-cols-1 gap-6">
                 <div className="space-y-1">
-                  <label className={labelCls}>Legal Business Name <span className="text-primary">*</span></label>
+                  <label className={labelCls}>Item Name <span className="text-primary">*</span></label>
                   <input
                     name="name"
                     required
-                    defaultValue={customer?.name}
-                    placeholder="e.g. Acme Corp Pvt Ltd"
+                    defaultValue={product?.name}
+                    placeholder="e.g. Premium Consultation"
                     className={inputCls}
                   />
                 </div>
                 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className={labelCls}><Mail className="w-3.5 h-3.5" /> Email</label>
-                    <input
-                      name="email"
-                      type="email"
-                      defaultValue={customer?.email || ''}
-                      placeholder="billing@acme.com"
+                    <label className={labelCls}><Activity className="w-3.5 h-3.5" /> Classification</label>
+                    <select 
+                      name="productKind" 
+                      defaultValue={product?.productKind || "SERVICE"} 
                       className={inputCls}
-                    />
+                    >
+                      <option value="GOOD">Goods / Physical</option>
+                      <option value="SERVICE">Professional Service</option>
+                    </select>
                   </div>
                   <div className="space-y-1">
-                    <label className={labelCls}><Phone className="w-3.5 h-3.5" /> Phone</label>
+                    <label className={labelCls}><Layers className="w-3.5 h-3.5" /> SKU / ID</label>
                     <input
-                      name="phone"
-                      defaultValue={customer?.phone || ''}
-                      placeholder="+91..."
+                      name="sku"
+                      defaultValue={product?.sku || ''}
+                      placeholder="e.g. PRD-1024"
                       className={inputCls}
                     />
                   </div>
@@ -219,87 +184,49 @@ export default function CustomerModal({
               </div>
             </div>
 
-            {/* Compliance Group */}
+            {/* Pricing & Compliance */}
             <div className="space-y-6">
               <h3 className="text-[10px] font-black text-primary uppercase tracking-[0.2em] flex items-center gap-2">
-                <ShieldCheck className="w-3 h-3" /> Tax Compliance
+                <IndianRupee className="w-3 h-3" /> Pricing & Tax
               </h3>
               
               <div className="bg-secondary/20 p-6 rounded-3xl border border-border/50 space-y-6">
-                <div 
-                  className="flex items-center justify-between cursor-pointer group"
-                  onClick={() => setIsGstRegistered(!isGstRegistered)}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all ${isGstRegistered ? 'bg-primary text-white shadow-lg' : 'bg-card text-muted-foreground border border-border'}`}>
-                      <FileCheck className="w-5 h-5" />
-                    </div>
-                    <span className="text-sm font-bold text-foreground">GST Registered</span>
-                  </div>
-                  <div className={`w-12 h-6 rounded-full p-1 transition-all ${isGstRegistered ? 'bg-primary' : 'bg-muted'}`}>
-                    <div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-all transform ${isGstRegistered ? 'translate-x-6' : 'translate-x-0'}`} />
-                  </div>
-                </div>
-
                 <div className="grid grid-cols-2 gap-4">
-                  <div className={`space-y-1 transition-opacity ${!isGstRegistered ? 'opacity-30' : ''}`}>
-                    <label className={labelCls}>GSTIN Number</label>
+                  <div className="space-y-1">
+                    <label className={labelCls}>Unit Price (₹) <span className="text-primary">*</span></label>
                     <input
-                      name="gstin"
-                      disabled={!isGstRegistered}
-                      defaultValue={customer?.gstin || ''}
-                      placeholder="27AAAAA..."
-                      className={`${inputCls} uppercase font-mono`}
+                      name="price"
+                      type="number"
+                      step="0.01"
+                      required
+                      defaultValue={product?.price}
+                      placeholder="0.00"
+                      className={inputCls}
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className={labelCls}>Place of Supply <span className="text-primary">*</span></label>
-                    <select
-                      name="stateCode"
-                      required
-                      value={selectedState}
-                      onChange={(e) => setSelectedState(e.target.value)}
-                      className={inputCls}
-                    >
-                      <option value="">Select State</option>
-                      {INDIAN_STATES.map(s => (
-                        <option key={s.code} value={s.code}>{s.code} — {s.name}</option>
-                      ))}
+                    <label className={labelCls}>GST Tax Rate</label>
+                    <select name="taxRate" defaultValue={product?.taxRate || 18} className={inputCls}>
+                      {[0, 5, 12, 18, 28].map(r => <option key={r} value={r}>{r}% GST</option>)}
                     </select>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className={labelCls}><Hash className="w-3.5 h-3.5" /> HSN / SAC Code</label>
+                  <input
+                    name="hsnCode"
+                    defaultValue={product?.hsnCode || ''}
+                    placeholder="e.g. 998311"
+                    className={inputCls}
+                  />
+                  <div className="mt-4 flex items-start gap-3 p-4 bg-card/50 rounded-2xl border border-border/50 text-[10px] font-bold text-muted-foreground leading-relaxed">
+                    <Info className="w-4 h-4 shrink-0 text-primary" />
+                    Used for Indian GST compliance reporting.
                   </div>
                 </div>
               </div>
             </div>
-
-            {/* Address Group */}
-            <div className="space-y-6">
-              <h3 className="text-[10px] font-black text-primary uppercase tracking-[0.2em] flex items-center gap-2">
-                <MapPin className="w-3 h-3" /> Location & Notes
-              </h3>
-              <div className="grid grid-cols-1 gap-6">
-                <div className="space-y-1">
-                  <label className={labelCls}>Registered Billing Address</label>
-                  <textarea
-                    name="address"
-                    rows={3}
-                    defaultValue={customer?.address || ''}
-                    placeholder="Street, City, Zip..."
-                    className={`${inputCls} resize-none py-3`}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className={labelCls}>Internal Notes / Description</label>
-                  <textarea
-                    name="description"
-                    rows={3}
-                    defaultValue={customer?.description || ''}
-                    placeholder="Add private notes about this client..."
-                    className={`${inputCls} resize-none py-3`}
-                  />
-                </div>
-              </div>
-            </div>
-
 
             {error && (
               <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-2xl flex items-center gap-3 text-destructive">
@@ -311,6 +238,16 @@ export default function CustomerModal({
 
           {/* Footer */}
           <div className="px-10 py-8 border-t border-border bg-secondary/10 flex items-center gap-4 shrink-0">
+            {isEdit && (
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={isPending}
+                className="p-4 text-destructive/60 hover:text-destructive hover:bg-destructive/5 rounded-2xl transition-all active:scale-90"
+              >
+                <Trash2 className="w-6 h-6" />
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setOpen(false)}
@@ -326,7 +263,7 @@ export default function CustomerModal({
               }`}
             >
               {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-              {isEdit ? 'Update Customer' : 'Save Customer'}
+              {isEdit ? 'Save Changes' : 'Add to Catalog'}
             </button>
           </div>
         </form>
@@ -346,7 +283,7 @@ export default function CustomerModal({
             className="flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground text-sm font-bold rounded-2xl hover:opacity-90 transition-all shadow-xl shadow-primary/20 active:scale-[0.98]"
           >
             <Plus className="w-4 h-4" />
-            Add Customer
+            Add Item
           </button>
         )
       )}

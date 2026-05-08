@@ -11,6 +11,7 @@ import {
   Mail,
   Download
 } from 'lucide-react';
+import { InvoiceActions } from './InvoiceActions';
 
 const STATUS_STYLES: Record<string, string> = {
   DRAFT: "bg-secondary text-muted-foreground border-border",
@@ -157,9 +158,7 @@ export default async function InvoicesPage({
                       >
                         <ArrowUpRight className="w-4 h-4" />
                       </Link>
-                      <button className="p-2 hover:bg-secondary rounded-lg transition-colors text-muted-foreground hover:text-foreground">
-                        <MoreHorizontal className="w-4 h-4" />
-                      </button>
+                      <InvoiceActions invoiceId={inv.id} invoiceStatus={inv.status} />
                     </div>
                   </td>
                 </tr>
