@@ -1,14 +1,24 @@
 # Requires one-time GCP setup: Artifact Registry repo, Cloud Run service, and either
 # Workload Identity Federation (recommended) or a JSON service account key.
 #
-# GitHub repo secrets (Workload Identity Federation):
+# GitHub repository secrets
+# -------------------------
+# GCP (pick ONE auth method):
 #   GCP_WORKLOAD_IDENTITY_PROVIDER  e.g. projects/123/locations/global/.../providers/github
 #   GCP_SERVICE_ACCOUNT             e.g. gh-actions-deploy@PROJECT_ID.iam.gserviceaccount.com
+#   OR
+#   GCP_SA_KEY                      Service account JSON (single-line or base64 — use WIF if possible)
+#
+# Build / app:
 #   NEXT_PUBLIC_APP_URL             Public site URL, e.g. https://invoice-web-xxxx.a.run.app
 #
-# Alternative: replace the auth step with credentials_json: ${{ secrets.GCP_SA_KEY }}
+# Database (Neon):
+#   DATABASE_URL                    Used ONLY in this workflow for `prisma migrate deploy`.
+#                                   Prefer Neon's *direct* (non-pooled) connection string for migrations;
+#                                   pooled URLs often work but Neon recommends direct for schema changes.
 #
-# Cloud Run: set DATABASE_URL (Neon pooled URL) via Console or Secret Manager — not stored in GitHub.
+# Cloud Run runtime: configure DATABASE_URL for the running container (Secret Manager or env var in Console).
+#   That value is separate from GitHub — the app needs DB access at runtime; CI needs it to migrate before deploy.
 
 name: Deploy to Cloud Run
 
@@ -33,7 +43,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate GCP auth inputs
+      - name: Validate required secrets
         shell: bash
         run: |
           has_wif=false
@@ -54,6 +64,29 @@ jobs:
             echo "Note: secrets are not available to workflows from forks/Dependabot by default."
             exit 1
           fi
+
+          if [[ -z "${{ secrets.DATABASE_URL }}" ]]; then
+            echo "Missing DATABASE_URL secret (Neon connection string) — required for prisma migrate deploy."
+            exit 1
+          fi
+
+          if [[ -z "${{ secrets.NEXT_PUBLIC_APP_URL }}" ]]; then
+            echo "Warning: NEXT_PUBLIC_APP_URL is empty; client-side absolute URLs may be wrong. Set the secret to your public Cloud Run URL."
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Apply database migrations (Prisma → Neon)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        working-directory: packages/db
+        run: npx prisma migrate deploy
 
       - id: auth-wif
         if: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && secrets.GCP_SERVICE_ACCOUNT != '' }}
@@ -90,4 +123,6 @@ jobs:
             --image "${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.AR_REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}" \
             --region ${{ env.REGION }} \
             --platform managed \
-            --project ${{ env.PROJECT_ID }}
+            --project ${{ env.PROJECT_ID }} \
+            --allow-unauthenticated \
+            --port 8080
