@@ -71,3 +71,27 @@ export async function updateCustomer(id: string, formData: FormData) {
     return { error: "Failed to update customer." };
   }
 }
+
+export async function deleteCustomer(id: string) {
+  const user = await requireAuth();
+  const organizationId = user.ownedOrgs[0]?.id;
+  if (!organizationId) return { error: "No organization found." };
+
+  try {
+    // Check if customer has invoices
+    const invoiceCount = await prisma.invoice.count({
+      where: { customerId: id, organizationId }
+    });
+
+    if (invoiceCount > 0) {
+      return { error: "Cannot delete customer with existing invoices. Please cancel the invoices first." };
+    }
+
+    await prisma.customer.delete({
+      where: { id, organizationId }
+    });
+    revalidatePath("/dashboard/customers");
+  } catch (err: any) {
+    return { error: "Failed to delete customer." };
+  }
+}

@@ -61,6 +61,7 @@ export async function PUT(
       placeOfSupply,
       notes,
       items,
+      isInterState: manualInterState,
     } = body;
 
     if (
@@ -117,8 +118,12 @@ export async function PUT(
       });
     }
 
-    const effectivePlaceOfSupply = placeOfSupply || customer.stateCode;
-    const isInterState = organization.stateCode !== effectivePlaceOfSupply;
+    const effectivePlaceOfSupply = placeOfSupply || customer.stateCode || "";
+    const orgState = (organization.stateCode || "").match(/\d+/)?.[0] || "";
+    const supplyState = effectivePlaceOfSupply.match(/\d+/)?.[0] || "";
+    const isInterState = typeof manualInterState === 'boolean'
+      ? manualInterState
+      : (!!orgState && !!supplyState && orgState !== supplyState);
     const {
       subTotal,
       cgstTotal,

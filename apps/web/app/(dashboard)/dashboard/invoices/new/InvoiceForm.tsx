@@ -27,6 +27,46 @@ type Product = {
   taxRate: number;
   productKind: string;
 };
+const INDIAN_STATES = [
+  { code: "01", name: "Jammu & Kashmir" },
+  { code: "02", name: "Himachal Pradesh" },
+  { code: "03", name: "Punjab" },
+  { code: "04", name: "Chandigarh" },
+  { code: "05", name: "Uttarakhand" },
+  { code: "06", name: "Haryana" },
+  { code: "07", name: "Delhi" },
+  { code: "08", name: "Rajasthan" },
+  { code: "09", name: "Uttar Pradesh" },
+  { code: "10", name: "Bihar" },
+  { code: "11", name: "Sikkim" },
+  { code: "12", name: "Arunachal Pradesh" },
+  { code: "13", name: "Nagaland" },
+  { code: "14", name: "Manipur" },
+  { code: "15", name: "Mizoram" },
+  { code: "16", name: "Tripura" },
+  { code: "17", name: "Meghalaya" },
+  { code: "18", name: "Assam" },
+  { code: "19", name: "West Bengal" },
+  { code: "20", name: "Jharkhand" },
+  { code: "21", name: "Odisha" },
+  { code: "22", name: "Chhattisgarh" },
+  { code: "23", name: "Madhya Pradesh" },
+  { code: "24", name: "Gujarat" },
+  { code: "26", name: "Dadra & Nagar Haveli and Daman & Diu" },
+  { code: "27", name: "Maharashtra" },
+  { code: "29", name: "Karnataka" },
+  { code: "30", name: "Goa" },
+  { code: "31", name: "Lakshadweep" },
+  { code: "32", name: "Kerala" },
+  { code: "33", name: "Tamil Nadu" },
+  { code: "34", name: "Puducherry" },
+  { code: "35", name: "Andaman & Nicobar Islands" },
+  { code: "36", name: "Telangana" },
+  { code: "37", name: "Andhra Pradesh" },
+  { code: "38", name: "Ladakh" },
+  { code: "97", name: "Other Territory" },
+];
+
 type LineItem = {
   id: string;
   productId: string | null;
@@ -311,8 +351,11 @@ export default function InvoiceForm({
     : "";
   const [customerInput, setCustomerInput] = useState(initialCustomerName);
   const [customerStateCode, setCustomerStateCode] = useState("");
+  const [placeOfSupplyOverride, setPlaceOfSupplyOverride] = useState("");
+  const [manualTaxMode, setManualTaxMode] = useState<"AUTO" | "INTRA" | "INTER">("AUTO");
   const [customerEmail, setCustomerEmail] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [customerDetails, setCustomerDetails] = useState("");
 
   const [items, setItems] = useState<LineItem[]>(
     existingData?.items.map((item, i) => ({
@@ -342,11 +385,15 @@ export default function InvoiceForm({
   );
 
   const effectiveStateCode =
-    customerStateCode || selectedCustomer?.stateCode || "";
-  const isInterState =
-    !!effectiveStateCode &&
-    !!orgStateCode &&
-    effectiveStateCode !== orgStateCode;
+    placeOfSupplyOverride || customerStateCode || selectedCustomer?.stateCode || "";
+  const isInterState = useMemo(() => {
+    if (manualTaxMode === "INTRA") return false;
+    if (manualTaxMode === "INTER") return true;
+    if (!effectiveStateCode || !orgStateCode) return false;
+    const s1 = effectiveStateCode.match(/\d+/)?.[0] || "";
+    const s2 = orgStateCode.match(/\d+/)?.[0] || "";
+    return !!s1 && !!s2 && s1 !== s2;
+  }, [effectiveStateCode, orgStateCode, manualTaxMode]);
 
   const totals = useMemo(() => {
     let subTotal = 0,
@@ -370,7 +417,7 @@ export default function InvoiceForm({
     setItems((p) => [
       ...p,
       {
-        id: crypto.randomUUID(),
+        id: Math.random().toString(36).substr(2, 9),
         productId: null,
         description: "",
         hsnCode: "",
@@ -418,7 +465,10 @@ export default function InvoiceForm({
           customerStateCode,
           customerEmail,
           customerPhone,
+          customerDetails,
           template: selectedTemplate,
+          placeOfSupply: effectiveStateCode,
+          isInterState,
           items: items.map((i) => ({
             productId: i.productId ?? undefined,
             description: i.description,
@@ -586,6 +636,47 @@ export default function InvoiceForm({
                     className={`${inputCls} scheme-light dark:scheme-dark`}
                   />
                 </div>
+                <div>
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                    Place of Supply (GST State)
+                  </label>
+                  <select
+                    value={placeOfSupplyOverride || (selectedCustomer?.stateCode ? selectedCustomer.stateCode.match(/\d+/)?.[0] : "") || ""}
+                    onChange={(e) => setPlaceOfSupplyOverride(e.target.value)}
+                    className={inputCls}
+                  >
+                    <option value="">Auto-detect from Customer</option>
+                    {INDIAN_STATES.map(s => (
+                      <option key={s.code} value={s.code}>{s.code} - {s.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                    Tax Calculation Mode
+                  </label>
+                  <div className="flex bg-secondary rounded-xl p-1 gap-1">
+                    {[
+                      { id: "AUTO", label: "Auto" },
+                      { id: "INTRA", label: "CGST+SGST" },
+                      { id: "INTER", label: "IGST" }
+                    ].map(m => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => setManualTaxMode(m.id as any)}
+                        className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg transition-all ${
+                          manualTaxMode === m.id 
+                            ? "bg-primary text-primary-foreground shadow-sm" 
+                            : "text-muted-foreground hover:bg-background/50"
+                        }`}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               {!selectedCustomer && customerInput.trim() && (
@@ -635,9 +726,20 @@ export default function InvoiceForm({
                       />
                     </div>
                   </div>
+                  <div className="mt-4">
+                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1.5 block">
+                      Customer Description / Extra Info (Appears on PDF)
+                    </label>
+                    <textarea
+                      rows={2}
+                      placeholder="e.g. Project name, contact person, or any specific instructions..."
+                      value={customerDetails}
+                      onChange={(e) => setCustomerDetails(e.target.value)}
+                      className={`${inputCls} resize-none min-h-[80px] py-3`}
+                    />
+                  </div>
                   <p className="text-[10px] text-muted-foreground italic">
-                    These details will be saved to your customer database
-                    automatically.
+                    Basic details will be saved to your customer database automatically.
                   </p>
                 </div>
               )}
@@ -747,7 +849,7 @@ export default function InvoiceForm({
                             className={inputCls}
                           />
                         </div>
-                        <div className="w-full sm:w-[160px]">
+                        <div className="w-full sm:w-[120px]">
                           <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1 block">
                             HSN/SAC
                           </label>
@@ -760,7 +862,7 @@ export default function InvoiceForm({
                             className={inputCls}
                           />
                         </div>
-                        <div className="w-[110px]">
+                        <div className="w-[80px]">
                           <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1 block">
                             Qty
                           </label>
@@ -777,22 +879,20 @@ export default function InvoiceForm({
                                 Number(e.target.value) || 0,
                               )
                             }
-                            className={`${inputCls} tabular-nums min-w-22`}
+                            className={`${inputCls} tabular-nums`}
                           />
                         </div>
-                        <div className="w-[170px]">
-                          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1 block">
+                        <div className="w-[130px]">
+                          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1 block flex items-center gap-1">
                             Rate (₹)
-                            <span className="ml-1 text-[8px] opacity-40 lowercase font-medium tracking-normal">
-                              (Editable)
-                            </span>
+                            <span className="text-[8px] bg-primary/10 text-primary px-1 rounded">Edit</span>
                           </label>
                           <input
                             type="number"
                             min="0"
                             step="0.01"
                             placeholder="0.00"
-                            value={item.unitPrice === 0 ? "" : item.unitPrice}
+                            value={item.unitPrice === 0 ? "" : Number(item.unitPrice.toFixed(2))}
                             onChange={(e) =>
                               updateItem(
                                 item.id,
@@ -800,49 +900,94 @@ export default function InvoiceForm({
                                 Number(e.target.value) || 0,
                               )
                             }
-                            className={inputCls}
+                            className={`${inputCls} border-primary/20 focus:border-primary shadow-sm`}
                           />
                         </div>
-                      </div>
-                      <div className="w-[170px] md:ml-auto">
-                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1 block">
-                          Total
-                        </label>
-                        <div className="h-[42px] rounded-xl border border-border bg-secondary/20 px-3 flex items-center justify-end">
-                          <span className="text-xs font-bold text-foreground tabular-nums">
-                            ₹
-                            {(
-                              (item.quantity || 0) * (item.unitPrice || 0)
-                            ).toLocaleString("en-IN", {
-                              minimumFractionDigits: 2,
-                            })}
-                          </span>
+                        <div className="w-[100px]">
+                          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1 block">
+                            GST %
+                          </label>
+                          <select
+                            value={item.taxRate}
+                            onChange={(e) =>
+                              updateItem(
+                                item.id,
+                                "taxRate",
+                                Number(e.target.value),
+                              )
+                            }
+                            className="w-full h-[42px] text-xs font-bold bg-secondary/50 border border-border rounded-xl px-2 py-1 focus:ring-2 focus:ring-primary/20"
+                          >
+                            {[0, 5, 12, 18, 28].map((r) => (
+                              <option key={r} value={r}>
+                                {r}%
+                              </option>
+                            ))}
+                          </select>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="flex items-center gap-4 justify-end">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                          GST %
-                        </span>
-                        <select
-                          value={item.taxRate}
-                          onChange={(e) =>
-                            updateItem(
-                              item.id,
-                              "taxRate",
-                              Number(e.target.value),
-                            )
-                          }
-                          className="text-xs font-bold bg-secondary border-none rounded-lg px-2 py-1 focus:ring-2 focus:ring-primary/20"
-                        >
-                          {[0, 5, 12, 18, 28].map((r) => (
-                            <option key={r} value={r}>
-                              {r}%
-                            </option>
-                          ))}
-                        </select>
+                      {/* Tax Breakdown & Totals */}
+                      <div className="flex flex-wrap gap-4 items-end bg-primary/5 p-4 rounded-2xl border border-primary/10">
+                        {isInterState ? (
+                          <div className="w-[90px]">
+                            <label className="text-[9px] font-bold text-primary/60 uppercase tracking-tighter mb-1 block">
+                              IGST ({item.taxRate}%)
+                            </label>
+                            <div className="text-xs font-bold tabular-nums text-primary">
+                              ₹{((item.quantity * item.unitPrice * item.taxRate) / 100).toFixed(2)}
+                            </div>
+                          </div>
+                        ) : null}
+                        
+                        <div className="w-[90px]">
+                          <label className="text-[9px] font-bold text-muted-foreground uppercase tracking-tighter mb-1 block">
+                            CGST ({item.taxRate / 2}%)
+                          </label>
+                          <div className="text-xs font-bold tabular-nums">
+                            ₹{!isInterState ? ((item.quantity * item.unitPrice * (item.taxRate / 2)) / 100).toFixed(2) : "0.00"}
+                          </div>
+                        </div>
+                        <div className="w-[90px]">
+                          <label className="text-[9px] font-bold text-muted-foreground uppercase tracking-tighter mb-1 block">
+                            SGST ({item.taxRate / 2}%)
+                          </label>
+                          <div className="text-xs font-bold tabular-nums">
+                            ₹{!isInterState ? ((item.quantity * item.unitPrice * (item.taxRate / 2)) / 100).toFixed(2) : "0.00"}
+                          </div>
+                        </div>
+                        
+                        <div className="w-[140px] ml-auto">
+                          <label className="text-[10px] font-bold text-primary uppercase tracking-widest mb-1 block">
+                            Total (Incl. Tax)
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="0.00"
+                            key={`total-${item.id}-${item.unitPrice}-${item.quantity}-${item.taxRate}`}
+                            defaultValue={(
+                              (item.quantity || 0) *
+                              (item.unitPrice || 0) *
+                              (1 + (item.taxRate || 0) / 100)
+                            ).toFixed(2)}
+                            onBlur={(e) => {
+                              const totalInclTax = Number(e.target.value) || 0;
+                              const qty = item.quantity || 1;
+                              const taxRate = item.taxRate || 0;
+                              const newUnitPrice = totalInclTax / (qty * (1 + taxRate / 100));
+                              updateItem(item.id, "unitPrice", newUnitPrice);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                (e.target as HTMLInputElement).blur();
+                              }
+                            }}
+                            className={`${inputCls} border-primary/40 bg-white font-bold text-primary focus:ring-primary/30`}
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
