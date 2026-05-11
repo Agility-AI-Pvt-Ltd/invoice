@@ -1,53 +1,48 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@repo/db';
-import { getSession } from '@/lib/auth';
-import { computeInvoiceTotals, validateItems } from '@/lib/gst';
-import { buildInvoiceItemCreates } from '@/lib/domain/inventory';
+import { NextResponse } from "next/server";
+import { prisma } from "@repo/db";
+import { computeInvoiceTotals, validateItems } from "@/lib/gst";
+import { buildInvoiceItemCreates } from "@/lib/domain/inventory";
+import { ApiErrors, handleApiError, successResponse } from "@/lib/errors";
+import { logger } from "@/lib/logger";
+import { stateCodeSchema } from "@repo/domain";
+import { getSessionOrThrow, getOrgOrThrow } from "@/lib/auth";
+import { enforceRateLimit, apiRateLimit } from "@/lib/ratelimit-api";
 
-// GET /api/invoices/[id] — fetch single invoice (for edit form)
+// GET /api/invoices/[id]
 export async function GET(
   _req: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
-  const { id } = await params;
-  const user = await getSession();
-  const organizationId = user?.ownedOrgs?.[0]?.id;
-  if (!organizationId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const invoice = await prisma.invoice.findUnique({
-    where: { id, organizationId },
-    include: { customer: true, items: true },
-  });
-
-  if (!invoice) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  return NextResponse.json(invoice);
-}
-
-// PUT /api/invoices/[id] — update invoice (only non-PAID/CANCELLED invoices)
-export async function PUT(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+  const context = "api:invoices:get";
   try {
     const { id } = await params;
-    const user = await getSession();
-    const organization = user?.ownedOrgs?.[0];
-    if (!organization) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const user = await getSessionOrThrow();
+    const organization = getOrgOrThrow(user);
 
-    const existing = await prisma.invoice.findUnique({
+    const invoice = await prisma.invoice.findUnique({
       where: { id, organizationId: organization.id },
+      include: { customer: true, items: true },
     });
-    if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    if (existing.status === 'PAID' || existing.status === 'CANCELLED') {
-      return NextResponse.json(
-        { error: `Cannot edit a ${existing.status} invoice.` },
-        { status: 400 }
-      );
-    }
+
+    if (!invoice) throw ApiErrors.NOT_FOUND("Invoice not found");
+    return successResponse(invoice);
+  } catch (error) {
+    return handleApiError(error, context);
+  }
+}
+
+// PUT /api/invoices/[id]
+export async function PUT(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const context = "api:invoices:update";
+  try {
+    const { id } = await params;
+    const user = await getSessionOrThrow();
+    const organization = getOrgOrThrow(user);
+
+    await enforceRateLimit(`invoice:update:${organization.id}`, apiRateLimit);
 
     const body = await req.json();
     const {
@@ -63,147 +58,169 @@ export async function PUT(
       billingAddress,
       shippingAddress,
       shippingName,
+      customerDetails,
     } = body;
 
+    // 1. Validation
     if (!invoiceNumber || !issueDate || !dueDate || !customerNameOrId || !items?.length) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+      throw ApiErrors.BAD_REQUEST("Missing required fields");
+    }
+
+    if (customerStateCode) {
+      const result = stateCodeSchema.safeParse(customerStateCode);
+      if (!result.success) throw ApiErrors.BAD_REQUEST(`Customer State: ${result.error.errors[0]?.message}`);
+    }
+
+    if (placeOfSupply) {
+      const result = stateCodeSchema.safeParse(placeOfSupply);
+      if (!result.success) throw ApiErrors.BAD_REQUEST(`Place of Supply: ${result.error.errors[0]?.message}`);
     }
 
     if (new Date(dueDate) < new Date(issueDate)) {
-      return NextResponse.json({ error: 'Due date cannot be before issue date' }, { status: 400 });
+      throw ApiErrors.BAD_REQUEST("Due date cannot be before issue date");
     }
 
     const itemError = validateItems(items);
-    if (itemError) return NextResponse.json({ error: itemError }, { status: 400 });
+    if (itemError) throw ApiErrors.BAD_REQUEST(itemError);
 
-    // Resolve customer
-    let customer =
-      (await prisma.customer.findFirst({ where: { id: customerNameOrId, organizationId: organization.id } }).catch(() => null)) ??
-      (await prisma.customer.findFirst({ where: { name: customerNameOrId, organizationId: organization.id } }).catch(() => null));
+    // 2. Atomic Transaction
+    const result = await prisma.$transaction(async (tx) => {
+      const existing = await tx.invoice.findUnique({
+        where: { id, organizationId: organization.id },
+      });
 
-    if (!customer) {
-      if (!customerStateCode && !organization.stateCode) {
-        return NextResponse.json({ error: 'Customer state code is required for new customers' }, { status: 400 });
+      if (!existing) throw ApiErrors.NOT_FOUND("Invoice not found");
+      if (existing.status === "PAID" || existing.status === "CANCELLED") {
+        throw ApiErrors.BAD_REQUEST(`Cannot edit a ${existing.status} invoice.`);
       }
-      customer = await prisma.customer.create({
-        data: {
-          organizationId: organization.id,
-          name: customerNameOrId,
-          stateCode: customerStateCode || organization.stateCode,
-          isRegistered: false,
+
+      // 2a. Resolve Customer
+      let customer = await tx.customer.findFirst({
+        where: { 
+          OR: [{ id: customerNameOrId }, { name: customerNameOrId }],
+          organizationId: organization.id 
         },
       });
-    }
 
-    const effectivePlaceOfSupply = placeOfSupply || customer.stateCode || "";
-    const orgState = (organization.stateCode || "").match(/\d+/)?.[0] || "";
-    const supplyState = effectivePlaceOfSupply.match(/\d+/)?.[0] || "";
-    const isInterState = typeof manualInterState === 'boolean'
-      ? manualInterState
-      : (!!orgState && !!supplyState && orgState !== supplyState);
-    const {
-      subTotal,
-      cgstTotal,
-      sgstTotal,
-      igstTotal,
-      discountTotal,
-      grandTotal,
-      processedItems,
-    } = computeInvoiceTotals(items, isInterState);
+      if (!customer) {
+        if (!customerStateCode && !organization.stateCode) {
+          throw ApiErrors.BAD_REQUEST("Customer state code is required for new customers");
+        }
+        customer = await tx.customer.create({
+          data: {
+            organizationId: organization.id,
+            name: customerNameOrId,
+            stateCode: customerStateCode || organization.stateCode!,
+            isRegistered: false,
+          },
+        });
+      }
 
-    const updated = await prisma.$transaction(async (tx) => {
+      // 2b. Calculate Totals
+      const effectivePlaceOfSupply = placeOfSupply || customer.stateCode || "";
+      const orgState = (organization.stateCode || "").match(/\d+/)?.[0] || "";
+      const supplyState = effectivePlaceOfSupply.match(/\d+/)?.[0] || "";
+      const isInterState = typeof manualInterState === 'boolean'
+        ? manualInterState
+        : (!!orgState && !!supplyState && orgState !== supplyState);
+
+      const totals = computeInvoiceTotals(items, isInterState);
+
+      // 2c. Sync Invoice Items
       await tx.invoiceItem.deleteMany({ where: { invoiceId: id } });
       const itemCreates = await buildInvoiceItemCreates(
         tx,
         organization.id,
         items,
-        processedItems
+        totals.processedItems,
       );
-      return tx.invoice.update({
+
+      // 2d. Update Invoice
+      const updated = await tx.invoice.update({
         where: { id },
         data: {
-          customerId: customer!.id,
+          customerId: customer.id,
           invoiceNumber,
           issueDate: new Date(issueDate),
           dueDate: new Date(dueDate),
           placeOfSupply: effectivePlaceOfSupply,
           notes: notes || null,
-          subTotal,
-          cgstTotal,
-          sgstTotal,
-          igstTotal,
-          discountTotal,
-          total: grandTotal,
+          subTotal: totals.subTotal,
+          cgstTotal: totals.cgstTotal,
+          sgstTotal: totals.sgstTotal,
+          igstTotal: totals.igstTotal,
+          discountTotal: totals.discountTotal,
+          total: totals.grandTotal,
           billingAddress,
           shippingAddress,
           shippingName,
+          customerDetails,
           items: { create: itemCreates },
         },
         include: { items: true, customer: true },
       });
-    });
 
-    await prisma.activityLog
-      .create({
+      // 2e. Audit Log
+      await tx.activityLog.create({
         data: {
           organizationId: organization.id,
           entity: "Invoice",
           entityId: id,
           action: "UPDATED",
-          meta: { invoiceNumber, total: grandTotal, discountTotal },
+          meta: { invoiceNumber, total: totals.grandTotal, discountTotal: totals.discountTotal },
         },
-      })
-      .catch(() => {});
+      });
 
-    return NextResponse.json(updated);
+      return updated;
+    });
+
+    logger.info(context, "Invoice updated successfully", { invoiceId: result.id, invoiceNumber });
+    return successResponse(result);
   } catch (error: any) {
-    console.error('[invoices/update]', error);
-    if (error.code === 'P2002') {
-      return NextResponse.json({ error: 'Invoice number already exists.' }, { status: 409 });
+    if (error.code === "P2002") {
+      return handleApiError(ApiErrors.CONFLICT("Invoice number already exists"), context);
     }
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return handleApiError(error, context);
   }
 }
 
-// DELETE /api/invoices/[id] — soft-cancel only; never hard-delete financial records
+// DELETE /api/invoices/[id]
 export async function DELETE(
   _req: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
+  const context = "api:invoices:delete";
   try {
     const { id } = await params;
-    const user = await getSession();
-    const organizationId = user?.ownedOrgs?.[0]?.id;
-    if (!organizationId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const user = await getSessionOrThrow();
+    const organization = getOrgOrThrow(user);
+    
+    await enforceRateLimit(`invoice:delete:${organization.id}`, apiRateLimit);
 
-    const existing = await prisma.invoice.findUnique({ where: { id, organizationId } });
-    if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    if (existing.status === 'PAID') {
-      return NextResponse.json({ error: 'Cannot cancel a paid invoice.' }, { status: 400 });
-    }
-    if (existing.status === 'CANCELLED') {
-      return NextResponse.json({ error: 'Invoice is already cancelled.' }, { status: 400 });
-    }
+    await prisma.$transaction(async (tx) => {
+      const existing = await tx.invoice.findUnique({
+        where: { id, organizationId: organization.id },
+      });
 
-    // Always soft-cancel — financial records must never be hard-deleted
-    await prisma.$transaction([
-      prisma.invoice.update({ where: { id }, data: { status: 'CANCELLED' } }),
-      prisma.activityLog.create({
+      if (!existing) throw ApiErrors.NOT_FOUND("Invoice not found");
+      if (existing.status === "PAID") throw ApiErrors.BAD_REQUEST("Cannot cancel a paid invoice.");
+      if (existing.status === "CANCELLED") throw ApiErrors.BAD_REQUEST("Invoice is already cancelled.");
+
+      await tx.invoice.update({ where: { id }, data: { status: "CANCELLED" } });
+      await tx.activityLog.create({
         data: {
-          organizationId,
-          entity: 'Invoice',
+          organizationId: organization.id,
+          entity: "Invoice",
           entityId: id,
-          action: 'CANCELLED',
+          action: "CANCELLED",
           meta: { previousStatus: existing.status },
         },
-      }),
-    ]);
+      });
+    });
 
-    return NextResponse.json({ cancelled: true });
+    logger.info(context, "Invoice cancelled successfully", { invoiceId: id });
+    return successResponse({ success: true, message: "Invoice cancelled" });
   } catch (error) {
-    console.error('[invoices/delete]', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return handleApiError(error, context);
   }
 }

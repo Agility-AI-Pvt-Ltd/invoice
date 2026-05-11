@@ -10,7 +10,9 @@ import { checkAuthRateLimit } from "../../../lib/ratelimit";
 const registerSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters" }),
   email: z.string().email({ message: "Invalid email address" }),
-  password: z.string().min(6, { message: "Password must be at least 6 characters" }),
+  password: z
+    .string()
+    .min(6, { message: "Password must be at least 6 characters" }),
 });
 
 type RegisterState = {
@@ -24,7 +26,7 @@ type RegisterState = {
 
 export async function registerUser(
   _prevState: RegisterState,
-  formData: FormData
+  formData: FormData,
 ): Promise<RegisterState> {
   const validatedFields = registerSchema.safeParse({
     name: formData.get("name"),
@@ -46,10 +48,13 @@ export async function registerUser(
   const { name, email, password } = validatedFields.data;
 
   const headerStore = await headers();
-  const ip = headerStore.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "anonymous";
+  const ip =
+    headerStore.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "anonymous";
   const rl = await checkAuthRateLimit(`register:${ip}`);
   if (!rl.allowed) {
-    return { message: `Too many registration attempts. Try again in ${rl.retryAfter}s.` };
+    return {
+      message: `Too many registration attempts. Try again in ${rl.retryAfter}s.`,
+    };
   }
 
   try {
@@ -74,7 +79,9 @@ export async function registerUser(
       path: "/",
     });
   } catch {
-    return { message: "An error occurred during registration. Please try again." };
+    return {
+      message: "An error occurred during registration. Please try again.",
+    };
   }
 
   redirect("/onboarding");

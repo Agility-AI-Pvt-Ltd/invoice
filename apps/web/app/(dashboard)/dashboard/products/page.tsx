@@ -2,6 +2,8 @@ import { requireAuth } from '../../../../lib/auth';
 import { prisma } from '@repo/db';
 import Link from 'next/link';
 import { Plus, Search, Box, Filter, Download, MoreHorizontal, TrendingUp } from 'lucide-react';
+import ProductModal from './ProductModal';
+import { ProductActions } from './ProductActions';
 
 export default async function ProductsPage({
   searchParams,
@@ -31,10 +33,7 @@ export default async function ProductsPage({
           <h1 className="text-4xl font-bold tracking-tight heading-display text-foreground">Inventory</h1>
           <p className="text-muted-foreground mt-1.5 text-sm">Manage your catalog, pricing, and HSN codes.</p>
         </div>
-        <button className="flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground text-sm font-bold rounded-xl hover:opacity-90 transition-all shadow-lg shadow-primary/20 active:scale-95">
-          <Plus className="w-4 h-4" />
-          Add New Item
-        </button>
+        <ProductModal />
       </div>
 
       {/* Toolbar */}
@@ -113,9 +112,7 @@ export default async function ProductsPage({
                       </div>
                     </td>
                     <td className="px-8 py-6 text-right">
-                      <button className="p-2 hover:bg-secondary rounded-xl transition-colors text-muted-foreground hover:text-foreground">
-                        <MoreHorizontal className="w-4 h-4" />
-                      </button>
+                      <ProductActions product={p} />
                     </td>
                   </tr>
                 ))

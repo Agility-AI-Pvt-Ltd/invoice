@@ -14,8 +14,9 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
-  title: "Invoicely | Professional Invoicing SaaS",
-  description: "Modern invoicing for professional businesses",
+  title: "Invoicely | Professional Invoicing SaaS ",
+  description:
+    "Modern invoicing for professional businesses | Powered by AgilityAI",
 };
 
 export default function RootLayout({
@@ -27,6 +28,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <head>
         <script
+          suppressHydrationWarning
           dangerouslySetInnerHTML={{
             __html: `
               (function() {
@@ -42,7 +44,10 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body suppressHydrationWarning className={`${inter.variable} ${outfit.variable} font-sans antialiased`}>
+      <body
+        suppressHydrationWarning
+        className={`${inter.variable} ${outfit.variable} font-sans antialiased`}
+      >
         <ThemeProvider attribute="data-theme" defaultTheme="light">
           {children}
         </ThemeProvider>

@@ -14,13 +14,15 @@ type ForgotPasswordState = {
 
 export async function sendPasswordReset(
   _prevState: ForgotPasswordState,
-  formData: FormData
+  formData: FormData,
 ): Promise<ForgotPasswordState> {
   const validatedFields = schema.safeParse({ email: formData.get("email") });
 
   if (!validatedFields.success) {
     return {
-      errors: validatedFields.error.flatten().fieldErrors as { email?: string[] },
+      errors: validatedFields.error.flatten().fieldErrors as {
+        email?: string[];
+      },
     };
   }
 

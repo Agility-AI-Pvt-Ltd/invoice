@@ -6,6 +6,7 @@ import { compare } from "bcryptjs";
 import { redirect } from "next/navigation";
 import { cookies, headers } from "next/headers";
 import { checkAuthRateLimit } from "../../../lib/ratelimit";
+import { logger } from "@/lib/logger";
 
 const loginSchema = z.object({
   email: z.string().email({ message: "Invalid email address" }),
@@ -22,7 +23,7 @@ type LoginState = {
 
 export async function loginUser(
   _prevState: LoginState,
-  formData: FormData
+  formData: FormData,
 ): Promise<LoginState> {
   const validatedFields = loginSchema.safeParse({
     email: formData.get("email"),
@@ -42,10 +43,13 @@ export async function loginUser(
   const { email, password } = validatedFields.data;
 
   const headerStore = await headers();
-  const ip = headerStore.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "anonymous";
+  const ip =
+    headerStore.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "anonymous";
   const rl = await checkAuthRateLimit(`login:${ip}`);
   if (!rl.allowed) {
-    return { message: `Too many login attempts. Try again in ${rl.retryAfter}s.` };
+    return {
+      message: `Too many login attempts. Try again in ${rl.retryAfter}s.`,
+    };
   }
 
   let redirectPath = "/dashboard";
@@ -75,7 +79,8 @@ export async function loginUser(
     if (!user.isOnboarded) {
       redirectPath = "/onboarding";
     }
-  } catch {
+  } catch (error) {
+    logger.error("auth:login", "Unexpected login failure", error, { email });
     return { message: "An error occurred during login. Please try again." };
   }
 

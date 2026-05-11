@@ -21,7 +21,15 @@ export default async function InvoiceViewPage({ params }: { params: Promise<{ id
 
   if (!invoice) notFound();
 
-  const isInterState = invoice.organization.stateCode !== invoice.placeOfSupply;
+  // Prioritize actual saved totals over state-code detection for the view/PDF
+  const hasIgst = Number(invoice.igstTotal) > 0;
+  const hasCgst = Number(invoice.cgstTotal) > 0;
+  
+  const orgState = (invoice.organization.stateCode || "").match(/\d+/)?.[0] || "";
+  const supplyState = (invoice.placeOfSupply || invoice.organization.stateCode || "").match(/\d+/)?.[0] || "";
+  
+  // If we have explicit tax values, use them. Otherwise, fall back to state-code detection.
+  const isInterState = hasIgst ? true : hasCgst ? false : (!!orgState && !!supplyState && orgState !== supplyState);
   const totalPaid = invoice.payments.reduce((s, p) => s + Number(p.amount), 0);
   const remaining = Number(invoice.total) - totalPaid;
   const template = (invoice.organization as any).defaultTemplate || 'modern';
@@ -233,6 +241,8 @@ function ModernTemplate({ invoice, isInterState }: any) {
         </table>
       </div>
 
+      <TaxBreakdownSection items={invoice.items} isInterState={isInterState} />
+
       <div className="px-12 py-10 flex justify-end">
         <div className="w-72 p-8 rounded-3xl bg-[#111827] text-white space-y-4 shadow-2xl">
           <div className="flex justify-between text-xs font-bold opacity-50 uppercase tracking-widest">
@@ -337,7 +347,12 @@ function ClassicTemplate({ invoice, isInterState }: any) {
             <tr key={item.id}>
               <td className="px-6 py-6">
                 <p className="font-bold text-slate-800">{item.description}</p>
-                <p className="text-[10px] text-slate-400 mt-1 italic">HSN: {item.hsnCode || 'N/A'}</p>
+                <div className="flex items-center gap-3 mt-1">
+                  <p className="text-[10px] text-slate-400 italic">HSN: {item.hsnCode || 'N/A'}</p>
+                  <span className="text-[9px] font-bold text-primary bg-primary/5 px-2 py-0.5 rounded">
+                    {Number(item.taxRate)}%
+                  </span>
+                </div>
               </td>
               <td className="px-6 py-6 text-center font-bold text-slate-600">{item.quantity}</td>
               <td className="px-6 py-6 text-right font-medium text-slate-600">{fmt(item.unitPrice)}</td>
@@ -347,6 +362,8 @@ function ClassicTemplate({ invoice, isInterState }: any) {
           ))}
         </tbody>
       </table>
+      <TaxBreakdownSection items={invoice.items} isInterState={isInterState} />
+
 
       <div className="flex justify-end">
         <div className="w-80 space-y-3">
@@ -439,7 +456,12 @@ function MinimalTemplate({ invoice, isInterState }: any) {
           <div key={item.id} className="grid grid-cols-12 py-8 border-b border-slate-50 items-center">
             <div className="col-span-6">
               <p className="text-lg font-bold text-slate-900 tracking-tight">{item.description}</p>
-              <p className="text-[10px] text-slate-400 mt-1 font-medium italic">Rate: {fmt(item.unitPrice)} + {item.taxRate.toString()}% GST</p>
+              <div className="flex items-center gap-3 mt-1">
+                <p className="text-[10px] text-slate-400 font-medium italic">Rate: {fmt(item.unitPrice)}</p>
+                <span className="text-[9px] font-bold text-primary bg-primary/5 px-2 py-0.5 rounded">
+                  {Number(item.taxRate)}%
+                </span>
+              </div>
             </div>
             <div className="col-span-1 text-center font-bold text-slate-400">{item.quantity}</div>
             <div className="col-span-2 text-right text-green-600 font-bold">
@@ -451,6 +473,10 @@ function MinimalTemplate({ invoice, isInterState }: any) {
           </div>
         ))}
       </div>
+      <div className="mb-12">
+        <TaxBreakdownSection items={invoice.items} isInterState={isInterState} />
+      </div>
+
 
       <div className="flex flex-col items-end text-slate-900">
         <div className="w-full md:w-80 space-y-4">
@@ -473,3 +499,56 @@ function MinimalTemplate({ invoice, isInterState }: any) {
     </div>
   );
 }
+
+function TaxBreakdownSection({ items, isInterState }: { items: any[]; isInterState: boolean }) {
+  const summary = items.reduce((acc: any, item: any) => {
+    const rate = Number(item.taxRate) || 0;
+    const base = Number(item.quantity) * Number(item.unitPrice);
+    const tax = (base * rate) / 100;
+    if (!acc[rate]) acc[rate] = { rate, taxable: 0, tax: 0 };
+    acc[rate].taxable += base;
+    acc[rate].tax += tax;
+    return acc;
+  }, {});
+
+  const rates = Object.values(summary).sort((a: any, b: any) => a.rate - b.rate);
+
+  return (
+    <div className="px-12 py-6 border-t border-slate-50 bg-slate-50/30">
+      <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">Tax Breakdown</h4>
+      <table className="w-full text-[10px]">
+        <thead>
+          <tr className="text-slate-400 font-bold uppercase tracking-wider">
+            <th className="pb-3 text-left">GST Rate</th>
+            <th className="pb-3 text-right">Taxable Value</th>
+            {isInterState ? (
+              <th className="pb-3 text-right">IGST</th>
+            ) : (
+              <>
+                <th className="pb-3 text-right">CGST</th>
+                <th className="pb-3 text-right">SGST</th>
+              </>
+            )}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {rates.map((r: any, i: number) => (
+            <tr key={i} className="text-slate-600 font-medium">
+              <td className="py-2.5">{r.rate}%</td>
+              <td className="py-2.5 text-right font-semibold text-slate-800">{fmt(r.taxable)}</td>
+              {isInterState ? (
+                <td className="py-2.5 text-right font-black text-slate-900">{fmt(r.tax)}</td>
+              ) : (
+                <>
+                  <td className="py-2.5 text-right font-black text-slate-900">{fmt(r.tax / 2)}</td>
+                  <td className="py-2.5 text-right font-black text-slate-900">{fmt(r.tax / 2)}</td>
+                </>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+

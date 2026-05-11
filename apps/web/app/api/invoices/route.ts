@@ -1,16 +1,21 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@repo/db';
-import { getSession } from '../../../lib/auth';
-import { computeInvoiceTotals, validateItems } from '../../../lib/gst';
-import { buildInvoiceItemCreates } from '@/lib/domain/inventory';
+import { NextResponse } from "next/server";
+import { prisma } from "@repo/db";
+import { computeInvoiceTotals, validateItems } from "../../../lib/gst";
+import { buildInvoiceItemCreates } from "@/lib/domain/inventory";
+import { ApiErrors, handleApiError, successResponse } from "@/lib/errors";
+import { logger } from "@/lib/logger";
+import { stateCodeSchema, indianPhoneSchema } from "@repo/domain";
+import { getSessionOrThrow, getOrgOrThrow } from "../../../lib/auth";
+import { enforceRateLimit, expensiveActionLimit } from "@/lib/ratelimit-api";
 
 export async function POST(request: Request) {
+  const context = "api:invoices:create";
   try {
-    const user = await getSession();
-    const organization = user?.ownedOrgs?.[0];
-    if (!organization) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const user = await getSessionOrThrow();
+    const organization = getOrgOrThrow(user);
+
+    // Rate Limit: 5 invoices per minute per organization
+    await enforceRateLimit(`invoice:create:${organization.id}`, expensiveActionLimit);
 
     const body = await request.json();
     const {
@@ -28,62 +33,63 @@ export async function POST(request: Request) {
       billingAddress,
       shippingAddress,
       shippingName,
+      customerDetails,
     } = body;
 
-    if (!invoiceNumber || !issueDate || !dueDate || !customerNameOrId || !items || items.length === 0) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    // 1. Basic Validation
+    if (!invoiceNumber || !issueDate || !dueDate || !customerNameOrId || !items?.length) {
+      throw ApiErrors.BAD_REQUEST("Missing required fields");
+    }
+
+    if (customerStateCode) {
+      const result = stateCodeSchema.safeParse(customerStateCode);
+      if (!result.success) throw ApiErrors.BAD_REQUEST(result.error.errors[0]?.message);
+    }
+
+    if (customerPhone) {
+      const result = indianPhoneSchema.safeParse(customerPhone);
+      if (!result.success) throw ApiErrors.BAD_REQUEST(result.error.errors[0]?.message);
+    }
+
+    if (placeOfSupply) {
+      const result = stateCodeSchema.safeParse(placeOfSupply);
+      if (!result.success) throw ApiErrors.BAD_REQUEST(`Place of Supply: ${result.error.errors[0]?.message}`);
     }
 
     if (new Date(dueDate) < new Date(issueDate)) {
-      return NextResponse.json({ error: 'Due date cannot be before issue date' }, { status: 400 });
+      throw ApiErrors.BAD_REQUEST("Due date cannot be before issue date");
     }
 
     const itemError = validateItems(items);
-    if (itemError) return NextResponse.json({ error: itemError }, { status: 400 });
+    if (itemError) throw ApiErrors.BAD_REQUEST(itemError);
 
-    // Resolve customer: by ID → by exact name → create
-    let customer =
-      (await prisma.customer.findFirst({
-        where: { id: customerNameOrId, organizationId: organization.id },
-      }).catch(() => null)) ??
-      (await prisma.customer.findFirst({
-        where: { name: customerNameOrId, organizationId: organization.id },
-      }).catch(() => null));
-
-    if (!customer) {
-      if (!customerStateCode && !organization.stateCode) {
-        return NextResponse.json({ error: 'Customer state code is required for new customers' }, { status: 400 });
-      }
-      customer = await prisma.customer.create({
-        data: {
-          organizationId: organization.id,
-          name: customerNameOrId,
-          stateCode: customerStateCode || organization.stateCode,
-          email: customerEmail || null,
-          phone: customerPhone || null,
-          isRegistered: false,
+    // 2. Atomic Database Operations
+    const result = await prisma.$transaction(async (tx) => {
+      // 2a. Resolve or Create Customer
+      let customer = await tx.customer.findFirst({
+        where: { 
+          OR: [{ id: customerNameOrId }, { name: customerNameOrId }],
+          organizationId: organization.id 
         },
       });
-    }
 
-    const effectivePlaceOfSupply = placeOfSupply || customer.stateCode || "";
-    const orgState = (organization.stateCode || "").match(/\d+/)?.[0] || "";
-    const supplyState = effectivePlaceOfSupply.match(/\d+/)?.[0] || "";
-    const isInterState = typeof manualInterState === 'boolean' 
-      ? manualInterState 
-      : (!!orgState && !!supplyState && orgState !== supplyState);
-    const {
-      subTotal,
-      cgstTotal,
-      sgstTotal,
-      igstTotal,
-      discountTotal,
-      grandTotal,
-      processedItems,
-    } = computeInvoiceTotals(items, isInterState);
+      if (!customer) {
+        if (!customerStateCode && !organization.stateCode) {
+          throw ApiErrors.BAD_REQUEST("Customer state code is required for new customers");
+        }
+        customer = await tx.customer.create({
+          data: {
+            organizationId: organization.id,
+            name: customerNameOrId,
+            stateCode: customerStateCode || organization.stateCode!,
+            email: customerEmail || null,
+            phone: customerPhone || null,
+            isRegistered: false,
+          },
+        });
+      }
 
-    const invoice = await prisma.$transaction(async (tx) => {
-      // Auto-save new products inline (best-effort, non-blocking)
+      // 2b. Auto-save Products
       for (const item of items) {
         if (item.description) {
           const exists = await tx.product.findFirst({
@@ -103,56 +109,71 @@ export async function POST(request: Request) {
         }
       }
 
+      // 2c. Calculate Totals
+      const effectivePlaceOfSupply = placeOfSupply || customer.stateCode || "";
+      const orgState = (organization.stateCode || "").match(/\d+/)?.[0] || "";
+      const supplyState = effectivePlaceOfSupply.match(/\d+/)?.[0] || "";
+      const isInterState = typeof manualInterState === 'boolean' 
+        ? manualInterState 
+        : (!!orgState && !!supplyState && orgState !== supplyState);
+
+      const totals = computeInvoiceTotals(items, isInterState);
+
+      // 2d. Create Invoice Items
       const itemCreates = await buildInvoiceItemCreates(
         tx,
         organization.id,
         items,
-        processedItems
+        totals.processedItems,
       );
 
-      return tx.invoice.create({
+      // 2e. Create Invoice
+      const invoice = await tx.invoice.create({
         data: {
           organizationId: organization.id,
-          customerId: customer!.id,
+          customerId: customer.id,
           invoiceNumber,
           issueDate: new Date(issueDate),
           dueDate: new Date(dueDate),
           placeOfSupply: effectivePlaceOfSupply,
           notes: notes || null,
-          subTotal,
-          cgstTotal,
-          sgstTotal,
-          igstTotal,
-          discountTotal,
-          total: grandTotal,
+          subTotal: totals.subTotal,
+          cgstTotal: totals.cgstTotal,
+          sgstTotal: totals.sgstTotal,
+          igstTotal: totals.igstTotal,
+          discountTotal: totals.discountTotal,
+          total: totals.grandTotal,
           status: "DRAFT",
           billingAddress,
           shippingAddress,
           shippingName,
+          customerDetails,
           items: { create: itemCreates },
         },
         include: { items: true, customer: true },
       });
-    });
 
-    await prisma.activityLog
-      .create({
+      // 2f. Activity Log (Now inside transaction for atomicity)
+      await tx.activityLog.create({
         data: {
           organizationId: organization.id,
           entity: "Invoice",
           entityId: invoice.id,
           action: "CREATED",
-          meta: { invoiceNumber, total: grandTotal, discountTotal },
+          meta: { invoiceNumber, total: totals.grandTotal, discountTotal: totals.discountTotal },
         },
-      })
-      .catch(() => {});
+      });
 
-    return NextResponse.json(invoice, { status: 201 });
+      return invoice;
+    });
+
+    logger.info(context, "Invoice created successfully", { invoiceId: result.id, invoiceNumber });
+    return successResponse(result, 201);
+
   } catch (error: any) {
-    console.error('[invoices/create]', error);
-    if (error.code === 'P2002') {
-      return NextResponse.json({ error: 'Invoice number already exists.' }, { status: 409 });
+    if (error.code === "P2002") {
+      return handleApiError(ApiErrors.CONFLICT("Invoice number already exists"), context);
     }
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return handleApiError(error, context);
   }
 }
