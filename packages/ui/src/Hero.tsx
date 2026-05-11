@@ -301,7 +301,9 @@ export default function HeroSection({
                 <img className="nav-logo-icon" src={logoSrc} alt={brandName} />
                 <span className="nav-logo-text">
                   <span className="nav-logo-title">{brandName}</span>
-                  <span className="nav-logo-subtitle">Powered by AgilityAi</span>
+                  <span className="nav-logo-subtitle">
+                    Powered by AgilityAi
+                  </span>
                 </span>
               </>
             ) : (
@@ -309,7 +311,9 @@ export default function HeroSection({
                 <div className="nav-logo-icon" aria-hidden="true" />
                 <span className="nav-logo-text">
                   <span className="nav-logo-title">{brandName}</span>
-                  <span className="nav-logo-subtitle">Powered by AgilityAi</span>
+                  <span className="nav-logo-subtitle">
+                    Powered by AgilityAi
+                  </span>
                 </span>
               </>
             )}
