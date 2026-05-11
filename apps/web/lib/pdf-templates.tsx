@@ -29,14 +29,12 @@ type InvoiceData = {
   sgstTotal: number;
   igstTotal: number;
   total: number;
-<<<<<<< Updated upstream
   notes?: string | null;
   placeOfSupply?: string | null;
-=======
   billingAddress?: string | null;
   shippingAddress?: string | null;
   shippingName?: string | null;
->>>>>>> Stashed changes
+  discountTotal?: number;
   items: InvoiceItem[];
   customer: {
     name: string;
@@ -166,11 +164,6 @@ function LineItemsTable({ items, s, isInterState }: { items: InvoiceItem[]; s: a
           <Text style={[s.tableCell, { width: colW.hsn, color: "#9ca3af" }]}>{item.hsnCode || "—"}</Text>
           <Text style={[s.tableCell, { width: colW.qty, textAlign: "center" }]}>{item.quantity}</Text>
           <Text style={[s.tableCell, { width: colW.price, textAlign: "right" }]}>{fmt(item.unitPrice)}</Text>
-<<<<<<< Updated upstream
-          <Text style={[s.tableCell, { width: colW.tax, textAlign: "center", color: "#6b7280" }]}>{item.taxRate}%</Text>
-          <Text style={[s.tableCell, { width: colW.amt, textAlign: "right", fontFamily: "Helvetica-Bold" }]}>
-            {fmt(item.quantity * item.unitPrice)}
-=======
           <Text style={[s.tableCell, { width: colW.tax, textAlign: "center", color: "#6b7280" }]}>
             {toNumber(item.taxRate)}%
           </Text>
@@ -179,7 +172,6 @@ function LineItemsTable({ items, s, isInterState }: { items: InvoiceItem[]; s: a
           </Text>
           <Text style={[s.tableCell, { width: colW.amt, textAlign: "right", fontFamily: "Inter", fontWeight: 700 }]}>
             {fmt(toNumber(item.quantity) * toNumber(item.unitPrice) - toNumber((item as any).discount || 0))}
->>>>>>> Stashed changes
           </Text>
         </View>
       ))}
@@ -187,8 +179,6 @@ function LineItemsTable({ items, s, isInterState }: { items: InvoiceItem[]; s: a
   );
 }
 
-<<<<<<< Updated upstream
-=======
 function TaxSummaryTable({ items, s, isInterState }: { items: InvoiceItem[]; s: any; isInterState: boolean }) {
   // Group by tax rate
   const summary = items.reduce((acc: any, item) => {
@@ -238,9 +228,6 @@ function TaxSummaryTable({ items, s, isInterState }: { items: InvoiceItem[]; s: 
     </View>
   );
 }
-
-
->>>>>>> Stashed changes
 // ─── MODERN PDF ──────────────────────────────────────────────────────
 function ModernPDF({ inv }: { inv: InvoiceData }) {
   const s = modernStyles;
@@ -468,15 +455,11 @@ function MinimalPDF({ inv }: { inv: InvoiceData }) {
             {inv.customer.gstin && <Text style={s.colVal}>GSTIN: {inv.customer.gstin}</Text>}
             <Text style={s.colVal}>{inv.billingAddress || inv.customer.address}</Text>
             {inv.customer.email && <Text style={s.colVal}>{inv.customer.email}</Text>}
-<<<<<<< Updated upstream
-            {inv.customer.address && <Text style={s.colVal}>{inv.customer.address}</Text>}
-=======
             {inv.customerDetails && (
               <Text style={[s.colVal, { marginTop: 6, color: "#9ca3af", fontStyle: "italic", fontSize: 8 }]}>
                 {inv.customerDetails}
               </Text>
             )}
->>>>>>> Stashed changes
           </View>
           <View style={{ width: "40%", textAlign: "right" }}>
             {inv.shippingAddress ? (

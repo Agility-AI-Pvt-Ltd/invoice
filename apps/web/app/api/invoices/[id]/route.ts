@@ -50,9 +50,6 @@ export async function PUT(
     }
 
     const body = await req.json();
-<<<<<<< Updated upstream
-    const { invoiceNumber, issueDate, dueDate, customerNameOrId, customerStateCode, placeOfSupply, notes, items } = body;
-=======
     const {
       invoiceNumber,
       issueDate,
@@ -67,7 +64,6 @@ export async function PUT(
       shippingAddress,
       shippingName,
     } = body;
->>>>>>> Stashed changes
 
     if (!invoiceNumber || !issueDate || !dueDate || !customerNameOrId || !items?.length) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -99,12 +95,6 @@ export async function PUT(
       });
     }
 
-<<<<<<< Updated upstream
-    const effectivePlaceOfSupply = placeOfSupply || customer.stateCode;
-    const isInterState = organization.stateCode !== effectivePlaceOfSupply;
-    const { subTotal, cgstTotal, sgstTotal, igstTotal, grandTotal, processedItems } =
-      computeInvoiceTotals(items, isInterState);
-=======
     const effectivePlaceOfSupply = placeOfSupply || customer.stateCode || "";
     const orgState = (organization.stateCode || "").match(/\d+/)?.[0] || "";
     const supplyState = effectivePlaceOfSupply.match(/\d+/)?.[0] || "";
@@ -120,7 +110,6 @@ export async function PUT(
       grandTotal,
       processedItems,
     } = computeInvoiceTotals(items, isInterState);
->>>>>>> Stashed changes
 
     const updated = await prisma.$transaction(async (tx) => {
       await tx.invoiceItem.deleteMany({ where: { invoiceId: id } });
@@ -154,17 +143,6 @@ export async function PUT(
       });
     });
 
-<<<<<<< Updated upstream
-    await prisma.activityLog.create({
-      data: {
-        organizationId: organization.id,
-        entity: 'Invoice',
-        entityId: id,
-        action: 'UPDATED',
-        meta: { invoiceNumber, total: grandTotal },
-      },
-    }).catch(() => {});
-=======
     await prisma.activityLog
       .create({
         data: {
@@ -176,7 +154,6 @@ export async function PUT(
         },
       })
       .catch(() => {});
->>>>>>> Stashed changes
 
     return NextResponse.json(updated);
   } catch (error: any) {

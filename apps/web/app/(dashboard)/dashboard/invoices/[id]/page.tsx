@@ -206,12 +206,8 @@ function ModernTemplate({ invoice, isInterState }: any) {
               <th className="py-4 text-left font-black">Service / Product</th>
               <th className="py-4 text-center">Qty</th>
               <th className="py-4 text-right">Rate</th>
-<<<<<<< Updated upstream
-              <th className="py-4 text-right">GST</th>
-=======
               <th className="py-4 text-center">GST%</th>
               <th className="py-4 text-right">Disc</th>
->>>>>>> Stashed changes
               <th className="py-4 text-right font-black">Amount</th>
             </tr>
           </thead>
@@ -224,10 +220,6 @@ function ModernTemplate({ invoice, isInterState }: any) {
                 </td>
                 <td className="py-6 text-center font-medium">{item.quantity}</td>
                 <td className="py-6 text-right font-medium">{fmt(item.unitPrice)}</td>
-<<<<<<< Updated upstream
-                <td className="py-6 text-right text-slate-400 text-[10px] font-bold">{item.taxRate?.toString()}%</td>
-                <td className="py-6 text-right font-black text-slate-900">{fmt(Number(item.quantity) * Number(item.unitPrice))}</td>
-=======
                 <td className="py-6 text-center text-slate-400 text-[10px] font-bold">
                   {Number(item.taxRate)}%
                 </td>
@@ -235,7 +227,6 @@ function ModernTemplate({ invoice, isInterState }: any) {
                   {Number(item.discount) > 0 ? `-${fmt(item.discount)}` : '-'}
                 </td>
                 <td className="py-6 text-right font-black text-slate-900">{fmt(Number(item.quantity) * Number(item.unitPrice) - Number(item.discount || 0))}</td>
->>>>>>> Stashed changes
               </tr>
             ))}
           </tbody>

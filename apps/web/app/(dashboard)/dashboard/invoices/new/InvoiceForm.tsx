@@ -248,10 +248,6 @@ export default function InvoiceForm({
       quantity: item.quantity,
       unitPrice: item.unitPrice,
       taxRate: item.taxRate,
-<<<<<<< Updated upstream
-    })) ??
-    [{ id: "1", productId: null, description: "", hsnCode: "", quantity: 0, unitPrice: 0, taxRate: 18 }]
-=======
       discount: (item as any).discount || 0,
     })) ?? [
       {
@@ -264,8 +260,7 @@ export default function InvoiceForm({
         taxRate: 18,
         discount: 0,
       },
-    ],
->>>>>>> Stashed changes
+    ]
   );
 
   const selectedCustomer = useMemo(
@@ -277,15 +272,11 @@ export default function InvoiceForm({
   const isInterState = !!effectiveStateCode && !!orgStateCode && effectiveStateCode !== orgStateCode;
 
   const totals = useMemo(() => {
-<<<<<<< Updated upstream
-    let subTotal = 0, cgst = 0, sgst = 0, igst = 0;
-=======
     let subTotal = 0,
       cgst = 0,
       sgst = 0,
       igst = 0,
       discountTotal = 0;
->>>>>>> Stashed changes
     items.forEach((item) => {
       const lineTotal = item.quantity * item.unitPrice;
       const taxableAmount = lineTotal - (item.discount || 0);
@@ -303,9 +294,6 @@ export default function InvoiceForm({
   const addItem = () =>
     setItems((p) => [
       ...p,
-<<<<<<< Updated upstream
-      { id: crypto.randomUUID(), productId: null, description: "", hsnCode: "", quantity: 0, unitPrice: 0, taxRate: 18 },
-=======
       {
         id: Math.random().toString(36).substr(2, 9),
         productId: null,
@@ -316,7 +304,6 @@ export default function InvoiceForm({
         taxRate: 18,
         discount: 0,
       },
->>>>>>> Stashed changes
     ]);
 
   const removeItem = (id: string) =>
@@ -350,9 +337,6 @@ export default function InvoiceForm({
           customerStateCode,
           customerEmail,
           customerPhone,
-<<<<<<< Updated upstream
-          template: selectedTemplate,
-=======
           customerDetails,
           billingAddress,
           shippingAddress: sameAsBilling ? billingAddress : shippingAddress,
@@ -361,7 +345,6 @@ export default function InvoiceForm({
           placeOfSupply: effectiveStateCode,
           isInterState,
           discountTotal: totals.discountTotal,
->>>>>>> Stashed changes
           items: items.map((i) => ({
             productId: i.productId ?? undefined,
             description: i.description,
@@ -729,28 +712,6 @@ export default function InvoiceForm({
                               className={inputCls}
                            />
                         </div>
-<<<<<<< Updated upstream
-                        <div className="md:col-span-1 flex items-center justify-end">
-                           <span className="text-xs font-bold text-slate-900">₹{((item.quantity || 0) * (item.unitPrice || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-4 justify-end">
-                         <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">GST %</span>
-                            <select
-                              value={item.taxRate}
-                              onChange={(e) => updateItem(item.id, "taxRate", Number(e.target.value))}
-                              className="text-xs font-bold bg-secondary border-none rounded-lg px-2 py-1 focus:ring-2 focus:ring-primary/20"
-                            >
-                              {[0, 5, 12, 18, 28].map((r) => <option key={r} value={r}>{r}%</option>)}
-                            </select>
-                         </div>
-                         <div className="text-right min-w-[100px]">
-                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Line Total</span>
-                            <span className="text-sm font-bold">₹{((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0)).toLocaleString('en-IN')}</span>
-                         </div>
-=======
                         <div className="w-[100px]">
                           <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1 block">
                             Disc (₹)
@@ -856,7 +817,6 @@ export default function InvoiceForm({
                             className={`${inputCls} border-primary/40 bg-white font-bold text-primary focus:ring-primary/30`}
                           />
                         </div>
->>>>>>> Stashed changes
                       </div>
                     </div>
                   ))}
@@ -875,23 +835,13 @@ export default function InvoiceForm({
           {/* Sticky Summary Sidebar */}
           <div className="lg:sticky lg:top-8 space-y-6">
             <div className="bg-card border border-border rounded-2xl p-6 shadow-xl relative overflow-hidden">
-<<<<<<< Updated upstream
-               <div className="absolute top-0 left-0 w-full h-1 bg-primary" />
-               <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-6">Invoice Summary</h3>
-               
-               <div className="space-y-3 mb-6">
-=======
               <div className="absolute top-0 left-0 w-full h-1 bg-primary" />
-              <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-6">
-                Invoice Summary
-              </h3>
-
+              <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-6">Invoice Summary</h3>
+              
               <div className="space-y-3 mb-6">
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Subtotal</span>
-                  <span className="font-semibold">
-                    ₹{totals.subTotal.toLocaleString("en-IN")}
-                  </span>
+                  <span className="text-muted-foreground font-medium">Subtotal</span>
+                  <span className="font-bold tabular-nums">₹{totals.subTotal.toLocaleString('en-IN')}</span>
                 </div>
 
                 {totals.discountTotal > 0 && (
@@ -907,35 +857,31 @@ export default function InvoiceForm({
                 )}
 
                 {isInterState ? (
->>>>>>> Stashed changes
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Subtotal</span>
-                    <span className="font-semibold">₹{totals.subTotal.toLocaleString('en-IN')}</span>
+                    <span className="text-muted-foreground">IGST Total</span>
+                    <span className="font-semibold">₹{totals.igst.toLocaleString('en-IN')}</span>
                   </div>
-                  
-                  {isInterState ? (
+                ) : (
+                  <>
                     <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">IGST Total</span>
-                      <span className="font-semibold">₹{totals.igst.toLocaleString('en-IN')}</span>
+                      <span className="text-muted-foreground">CGST Total</span>
+                      <span className="font-semibold">₹{totals.cgst.toLocaleString('en-IN')}</span>
                     </div>
-                  ) : (
-                    <>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">CGST Total</span>
-                        <span className="font-semibold">₹{totals.cgst.toLocaleString('en-IN')}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">SGST Total</span>
-                        <span className="font-semibold">₹{totals.sgst.toLocaleString('en-IN')}</span>
-                      </div>
-                    </>
-                  )}
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">SGST Total</span>
+                      <span className="font-semibold">₹{totals.sgst.toLocaleString('en-IN')}</span>
+                    </div>
+                  </>
+                )}
 
-                  <div className="pt-4 border-t border-border flex justify-between">
-                    <span className="text-base font-bold">Total Amount</span>
-                    <span className="text-xl font-bold text-primary">₹{totals.total.toLocaleString('en-IN')}</span>
+                <div className="pt-4 border-t border-border flex justify-between items-end">
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-300 block mb-1">Amount Due</span>
+                    <span className="text-base font-bold text-slate-900">Total Amount</span>
                   </div>
-               </div>
+                  <span className="text-3xl font-black text-primary italic">₹{totals.total.toLocaleString('en-IN')}</span>
+                </div>
+              </div>
 
                <div className="space-y-4">
                   <div>

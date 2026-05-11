@@ -10,10 +10,6 @@ export default async function NewInvoicePage() {
   const [customers, products, organization, lastInvoice] = await Promise.all([
     prisma.customer.findMany({
       where: { organizationId },
-<<<<<<< Updated upstream
-      select: { id: true, name: true, stateCode: true, email: true, phone: true },
-      orderBy: { name: 'asc' }
-=======
       select: {
         id: true,
         name: true,
@@ -23,7 +19,6 @@ export default async function NewInvoicePage() {
         address: true,
       },
       orderBy: { name: "asc" },
->>>>>>> Stashed changes
     }),
     prisma.product.findMany({
       where: { organizationId },
