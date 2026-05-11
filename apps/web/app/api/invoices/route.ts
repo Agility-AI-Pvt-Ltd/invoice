@@ -24,6 +24,13 @@ export async function POST(request: Request) {
       placeOfSupply,
       notes,
       items,
+<<<<<<< Updated upstream
+=======
+      isInterState: manualInterState,
+      billingAddress,
+      shippingAddress,
+      shippingName,
+>>>>>>> Stashed changes
     } = body;
 
     if (!invoiceNumber || !issueDate || !dueDate || !customerNameOrId || !items || items.length === 0) {
@@ -62,10 +69,28 @@ export async function POST(request: Request) {
       });
     }
 
+<<<<<<< Updated upstream
     const effectivePlaceOfSupply = placeOfSupply || customer.stateCode;
     const isInterState = organization.stateCode !== effectivePlaceOfSupply;
     const { subTotal, cgstTotal, sgstTotal, igstTotal, grandTotal, processedItems } =
       computeInvoiceTotals(items, isInterState);
+=======
+    const effectivePlaceOfSupply = placeOfSupply || customer.stateCode || "";
+    const orgState = (organization.stateCode || "").match(/\d+/)?.[0] || "";
+    const supplyState = effectivePlaceOfSupply.match(/\d+/)?.[0] || "";
+    const isInterState = typeof manualInterState === 'boolean' 
+      ? manualInterState 
+      : (!!orgState && !!supplyState && orgState !== supplyState);
+    const {
+      subTotal,
+      cgstTotal,
+      sgstTotal,
+      igstTotal,
+      discountTotal,
+      grandTotal,
+      processedItems,
+    } = computeInvoiceTotals(items, isInterState);
+>>>>>>> Stashed changes
 
     const invoice = await prisma.$transaction(async (tx) => {
       // Auto-save new products inline (best-effort, non-blocking)
@@ -108,14 +133,23 @@ export async function POST(request: Request) {
           cgstTotal,
           sgstTotal,
           igstTotal,
+          discountTotal,
           total: grandTotal,
+<<<<<<< Updated upstream
           status: 'DRAFT',
+=======
+          status: "DRAFT",
+          billingAddress,
+          shippingAddress,
+          shippingName,
+>>>>>>> Stashed changes
           items: { create: itemCreates },
         },
         include: { items: true, customer: true },
       });
     });
 
+<<<<<<< Updated upstream
     await prisma.activityLog.create({
       data: {
         organizationId: organization.id,
@@ -125,6 +159,19 @@ export async function POST(request: Request) {
         meta: { invoiceNumber, total: grandTotal },
       },
     }).catch(() => {});
+=======
+    await prisma.activityLog
+      .create({
+        data: {
+          organizationId: organization.id,
+          entity: "Invoice",
+          entityId: invoice.id,
+          action: "CREATED",
+          meta: { invoiceNumber, total: grandTotal, discountTotal },
+        },
+      })
+      .catch(() => {});
+>>>>>>> Stashed changes
 
     return NextResponse.json(invoice, { status: 201 });
   } catch (error: any) {

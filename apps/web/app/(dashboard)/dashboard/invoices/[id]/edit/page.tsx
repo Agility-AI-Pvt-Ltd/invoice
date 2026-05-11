@@ -17,7 +17,7 @@ export default async function EditInvoicePage({ params }: { params: Promise<{ id
     }),
     prisma.customer.findMany({
       where: { organizationId },
-      select: { id: true, name: true, stateCode: true },
+      select: { id: true, name: true, stateCode: true, address: true },
       orderBy: { name: 'asc' },
     }),
     prisma.product.findMany({
@@ -57,6 +57,9 @@ export default async function EditInvoicePage({ params }: { params: Promise<{ id
     customerNameOrId: invoice.customer.id,
     placeOfSupply: invoice.placeOfSupply || '',
     notes: invoice.notes || '',
+    billingAddress: invoice.billingAddress,
+    shippingAddress: invoice.shippingAddress,
+    shippingName: invoice.shippingName,
     items: invoice.items.map((item) => ({
       productId: item.productId,
       description: item.description,
@@ -64,6 +67,7 @@ export default async function EditInvoicePage({ params }: { params: Promise<{ id
       quantity: item.quantity,
       unitPrice: item.unitPrice,
       taxRate: Number(item.taxRate),
+      discount: Number((item as any).discount || 0),
     })),
   };
 

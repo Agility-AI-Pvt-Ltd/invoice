@@ -168,7 +168,22 @@ function ModernTemplate({ invoice, isInterState }: any) {
             <div className="space-y-1 text-xs text-slate-500 font-medium">
               {invoice.customer.gstin && <p>GSTIN: {invoice.customer.gstin}</p>}
               {invoice.customer.email && <p>{invoice.customer.email}</p>}
-              {invoice.customer.address && <p className="mt-2 leading-relaxed">{invoice.customer.address}</p>}
+              <p className="mt-2 leading-relaxed italic text-slate-400 text-[10px] uppercase tracking-widest font-bold">Billing Address</p>
+              <p className="leading-relaxed">{invoice.billingAddress || invoice.customer.address}</p>
+              
+              {invoice.shippingAddress && (
+                <>
+                  <p className="mt-4 leading-relaxed italic text-slate-400 text-[10px] uppercase tracking-widest font-bold">Shipping Address</p>
+                  <p className="text-slate-900 font-bold">{invoice.shippingName || invoice.customer.name}</p>
+                  <p className="leading-relaxed">{invoice.shippingAddress}</p>
+                </>
+              )}
+
+              {invoice.customerDetails && (
+                <p className="mt-4 p-3 bg-white border border-slate-100 rounded-xl text-[10px] text-slate-500 italic">
+                  {invoice.customerDetails}
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -191,7 +206,12 @@ function ModernTemplate({ invoice, isInterState }: any) {
               <th className="py-4 text-left font-black">Service / Product</th>
               <th className="py-4 text-center">Qty</th>
               <th className="py-4 text-right">Rate</th>
+<<<<<<< Updated upstream
               <th className="py-4 text-right">GST</th>
+=======
+              <th className="py-4 text-center">GST%</th>
+              <th className="py-4 text-right">Disc</th>
+>>>>>>> Stashed changes
               <th className="py-4 text-right font-black">Amount</th>
             </tr>
           </thead>
@@ -204,8 +224,18 @@ function ModernTemplate({ invoice, isInterState }: any) {
                 </td>
                 <td className="py-6 text-center font-medium">{item.quantity}</td>
                 <td className="py-6 text-right font-medium">{fmt(item.unitPrice)}</td>
+<<<<<<< Updated upstream
                 <td className="py-6 text-right text-slate-400 text-[10px] font-bold">{item.taxRate?.toString()}%</td>
                 <td className="py-6 text-right font-black text-slate-900">{fmt(Number(item.quantity) * Number(item.unitPrice))}</td>
+=======
+                <td className="py-6 text-center text-slate-400 text-[10px] font-bold">
+                  {Number(item.taxRate)}%
+                </td>
+                <td className="py-6 text-right text-green-600 font-bold">
+                  {Number(item.discount) > 0 ? `-${fmt(item.discount)}` : '-'}
+                </td>
+                <td className="py-6 text-right font-black text-slate-900">{fmt(Number(item.quantity) * Number(item.unitPrice) - Number(item.discount || 0))}</td>
+>>>>>>> Stashed changes
               </tr>
             ))}
           </tbody>
@@ -232,6 +262,12 @@ function ModernTemplate({ invoice, isInterState }: any) {
                 <span>SGST</span><span>{fmt(invoice.sgstTotal)}</span>
               </div>
             </>
+          )}
+          {Number(invoice.discountTotal) > 0 && (
+            <div className="flex justify-between text-xs font-bold text-green-400 uppercase tracking-widest">
+              <span>Discount</span>
+              <span>-{fmt(invoice.discountTotal)}</span>
+            </div>
           )}
           <div className="pt-4 border-t border-white/10 flex justify-between items-end">
             <span className="text-xs font-black uppercase tracking-[0.2em] text-primary">Grand Total</span>
@@ -268,7 +304,15 @@ function ClassicTemplate({ invoice, isInterState }: any) {
           <div>
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Bill To</p>
             <p className="text-lg font-bold text-slate-900">{invoice.customer.name}</p>
-            <p className="text-xs text-slate-500 leading-relaxed mt-1">{invoice.customer.address}</p>
+            <p className="text-xs text-slate-500 leading-relaxed mt-1">{invoice.billingAddress || invoice.customer.address}</p>
+            
+            {invoice.shippingAddress && (
+              <div className="mt-6">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Ship To</p>
+                <p className="text-sm font-bold text-slate-800">{invoice.shippingName || invoice.customer.name}</p>
+                <p className="text-xs text-slate-500 leading-relaxed mt-1">{invoice.shippingAddress}</p>
+              </div>
+            )}
           </div>
         </div>
         <div className="space-y-4">
@@ -293,6 +337,7 @@ function ClassicTemplate({ invoice, isInterState }: any) {
             <th className="px-6 py-4 text-left text-[10px] font-bold uppercase tracking-widest">Description</th>
             <th className="px-6 py-4 text-center text-[10px] font-bold uppercase tracking-widest">Qty</th>
             <th className="px-6 py-4 text-right text-[10px] font-bold uppercase tracking-widest">Unit Price</th>
+            <th className="px-6 py-4 text-right text-[10px] font-bold uppercase tracking-widest">Disc</th>
             <th className="px-6 py-4 text-right text-[10px] font-bold uppercase tracking-widest">Total</th>
           </tr>
         </thead>
@@ -305,7 +350,8 @@ function ClassicTemplate({ invoice, isInterState }: any) {
               </td>
               <td className="px-6 py-6 text-center font-bold text-slate-600">{item.quantity}</td>
               <td className="px-6 py-6 text-right font-medium text-slate-600">{fmt(item.unitPrice)}</td>
-              <td className="px-6 py-6 text-right font-black text-slate-900">{fmt(Number(item.quantity) * Number(item.unitPrice))}</td>
+              <td className="px-6 py-6 text-right text-green-600 font-bold">{Number(item.discount) > 0 ? `-${fmt(item.discount)}` : '-'}</td>
+              <td className="px-6 py-6 text-right font-black text-slate-900">{fmt(Number(item.quantity) * Number(item.unitPrice) - Number(item.discount || 0))}</td>
             </tr>
           ))}
         </tbody>
@@ -329,6 +375,12 @@ function ClassicTemplate({ invoice, isInterState }: any) {
                 <span>SGST</span><span>{fmt(invoice.sgstTotal)}</span>
               </div>
             </>
+          )}
+          {Number(invoice.discountTotal) > 0 && (
+            <div className="flex justify-between text-xs font-bold text-green-600 px-2">
+              <span>Discount</span>
+              <span>-{fmt(invoice.discountTotal)}</span>
+            </div>
           )}
           <div className="flex justify-between bg-slate-900 text-white p-4 rounded-xl items-end mt-6">
             <span className="text-[10px] font-black uppercase tracking-[0.2em]">Amount Due</span>
@@ -365,30 +417,45 @@ function MinimalTemplate({ invoice, isInterState }: any) {
         </div>
       </div>
 
-      <div className="mb-24 text-slate-900">
-        <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest mb-4">Recipient</p>
-        <p className="text-2xl font-black text-slate-900 tracking-tight">{invoice.customer.name}</p>
-        <div className="mt-4 text-sm font-medium text-slate-500 max-w-sm leading-relaxed">
-          {invoice.customer.address}
-          {invoice.customer.gstin && <p className="mt-2 font-bold text-slate-800">GSTIN {invoice.customer.gstin}</p>}
+      <div className="mb-24 grid grid-cols-1 md:grid-cols-2 gap-12 text-slate-900">
+        <div>
+          <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest mb-4">Recipient (Billing)</p>
+          <p className="text-2xl font-black text-slate-900 tracking-tight">{invoice.customer.name}</p>
+          <div className="mt-4 text-sm font-medium text-slate-500 max-w-sm leading-relaxed">
+            {invoice.billingAddress || invoice.customer.address}
+            {invoice.customer.gstin && <p className="mt-2 font-bold text-slate-800">GSTIN {invoice.customer.gstin}</p>}
+          </div>
         </div>
+        {invoice.shippingAddress && (
+          <div>
+            <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest mb-4">Shipping Destination</p>
+            <p className="text-xl font-bold text-slate-900 tracking-tight">{invoice.shippingName || invoice.customer.name}</p>
+            <div className="mt-4 text-sm font-medium text-slate-500 max-w-sm leading-relaxed">
+              {invoice.shippingAddress}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="mb-20 text-slate-900">
         <div className="grid grid-cols-12 pb-4 border-b border-slate-100 text-[10px] font-bold text-slate-300 uppercase tracking-widest">
-          <div className="col-span-8">Details</div>
+          <div className="col-span-6">Details</div>
           <div className="col-span-1 text-center">Qty</div>
+          <div className="col-span-2 text-right">Disc</div>
           <div className="col-span-3 text-right">Amount</div>
         </div>
         {invoice.items.map((item: any) => (
           <div key={item.id} className="grid grid-cols-12 py-8 border-b border-slate-50 items-center">
-            <div className="col-span-8">
+            <div className="col-span-6">
               <p className="text-lg font-bold text-slate-900 tracking-tight">{item.description}</p>
               <p className="text-[10px] text-slate-400 mt-1 font-medium italic">Rate: {fmt(item.unitPrice)} + {item.taxRate.toString()}% GST</p>
             </div>
             <div className="col-span-1 text-center font-bold text-slate-400">{item.quantity}</div>
+            <div className="col-span-2 text-right text-green-600 font-bold">
+              {Number(item.discount) > 0 ? `-${fmt(item.discount)}` : '-'}
+            </div>
             <div className="col-span-3 text-right font-black text-xl text-slate-900 tracking-tighter italic">
-              {fmt(Number(item.quantity) * Number(item.unitPrice) * (1 + Number(item.taxRate) / 100))}
+              {fmt(Number(item.quantity) * Number(item.unitPrice) - Number(item.discount || 0))}
             </div>
           </div>
         ))}
@@ -400,6 +467,12 @@ function MinimalTemplate({ invoice, isInterState }: any) {
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Taxes</span>
             <span className="text-sm font-bold text-slate-600">{fmt(Number(invoice.total) - Number(invoice.subTotal))}</span>
           </div>
+          {Number(invoice.discountTotal) > 0 && (
+            <div className="flex justify-between items-center px-4 py-2 bg-green-50 rounded-xl">
+              <span className="text-[10px] font-bold text-green-600 uppercase tracking-widest">Discount</span>
+              <span className="text-sm font-bold text-green-600">-{fmt(invoice.discountTotal)}</span>
+            </div>
+          )}
           <div className="flex justify-between items-end px-4 py-6">
             <span className="text-xs font-black uppercase tracking-widest text-slate-300">Amount Due</span>
             <span className="text-5xl font-black tracking-tighter text-slate-900 italic leading-none">{fmt(invoice.total)}</span>

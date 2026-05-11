@@ -50,7 +50,24 @@ export async function PUT(
     }
 
     const body = await req.json();
+<<<<<<< Updated upstream
     const { invoiceNumber, issueDate, dueDate, customerNameOrId, customerStateCode, placeOfSupply, notes, items } = body;
+=======
+    const {
+      invoiceNumber,
+      issueDate,
+      dueDate,
+      customerNameOrId,
+      customerStateCode,
+      placeOfSupply,
+      notes,
+      items,
+      isInterState: manualInterState,
+      billingAddress,
+      shippingAddress,
+      shippingName,
+    } = body;
+>>>>>>> Stashed changes
 
     if (!invoiceNumber || !issueDate || !dueDate || !customerNameOrId || !items?.length) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -82,10 +99,28 @@ export async function PUT(
       });
     }
 
+<<<<<<< Updated upstream
     const effectivePlaceOfSupply = placeOfSupply || customer.stateCode;
     const isInterState = organization.stateCode !== effectivePlaceOfSupply;
     const { subTotal, cgstTotal, sgstTotal, igstTotal, grandTotal, processedItems } =
       computeInvoiceTotals(items, isInterState);
+=======
+    const effectivePlaceOfSupply = placeOfSupply || customer.stateCode || "";
+    const orgState = (organization.stateCode || "").match(/\d+/)?.[0] || "";
+    const supplyState = effectivePlaceOfSupply.match(/\d+/)?.[0] || "";
+    const isInterState = typeof manualInterState === 'boolean'
+      ? manualInterState
+      : (!!orgState && !!supplyState && orgState !== supplyState);
+    const {
+      subTotal,
+      cgstTotal,
+      sgstTotal,
+      igstTotal,
+      discountTotal,
+      grandTotal,
+      processedItems,
+    } = computeInvoiceTotals(items, isInterState);
+>>>>>>> Stashed changes
 
     const updated = await prisma.$transaction(async (tx) => {
       await tx.invoiceItem.deleteMany({ where: { invoiceId: id } });
@@ -108,13 +143,18 @@ export async function PUT(
           cgstTotal,
           sgstTotal,
           igstTotal,
+          discountTotal,
           total: grandTotal,
+          billingAddress,
+          shippingAddress,
+          shippingName,
           items: { create: itemCreates },
         },
         include: { items: true, customer: true },
       });
     });
 
+<<<<<<< Updated upstream
     await prisma.activityLog.create({
       data: {
         organizationId: organization.id,
@@ -124,6 +164,19 @@ export async function PUT(
         meta: { invoiceNumber, total: grandTotal },
       },
     }).catch(() => {});
+=======
+    await prisma.activityLog
+      .create({
+        data: {
+          organizationId: organization.id,
+          entity: "Invoice",
+          entityId: id,
+          action: "UPDATED",
+          meta: { invoiceNumber, total: grandTotal, discountTotal },
+        },
+      })
+      .catch(() => {});
+>>>>>>> Stashed changes
 
     return NextResponse.json(updated);
   } catch (error: any) {

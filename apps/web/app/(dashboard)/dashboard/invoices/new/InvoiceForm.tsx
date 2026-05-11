@@ -14,6 +14,7 @@ type LineItem = {
   quantity: number;
   unitPrice: number;
   taxRate: number;
+  discount: number;
 };
 
 const TEMPLATES = [
@@ -180,6 +181,9 @@ type ExistingData = {
   customerNameOrId: string;
   placeOfSupply: string;
   notes: string;
+  billingAddress?: string | null;
+  shippingAddress?: string | null;
+  shippingName?: string | null;
   items: {
     productId: string | null;
     description: string;
@@ -187,6 +191,7 @@ type ExistingData = {
     quantity: number;
     unitPrice: number;
     taxRate: number;
+    discount: number;
   }[];
 };
 
@@ -229,6 +234,11 @@ export default function InvoiceForm({
   const [customerEmail, setCustomerEmail] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
 
+  const [billingAddress, setBillingAddress] = useState(existingData?.billingAddress ?? "");
+  const [shippingAddress, setShippingAddress] = useState(existingData?.shippingAddress ?? "");
+  const [shippingName, setShippingName] = useState(existingData?.shippingName ?? "");
+  const [sameAsBilling, setSameAsBilling] = useState(editMode ? (!existingData?.shippingAddress || existingData.shippingAddress === existingData.billingAddress) : true);
+
   const [items, setItems] = useState<LineItem[]>(
     existingData?.items.map((item, i) => ({
       id: String(i + 1),
@@ -238,8 +248,24 @@ export default function InvoiceForm({
       quantity: item.quantity,
       unitPrice: item.unitPrice,
       taxRate: item.taxRate,
+<<<<<<< Updated upstream
     })) ??
     [{ id: "1", productId: null, description: "", hsnCode: "", quantity: 0, unitPrice: 0, taxRate: 18 }]
+=======
+      discount: (item as any).discount || 0,
+    })) ?? [
+      {
+        id: "1",
+        productId: null,
+        description: "",
+        hsnCode: "",
+        quantity: 0,
+        unitPrice: 0,
+        taxRate: 18,
+        discount: 0,
+      },
+    ],
+>>>>>>> Stashed changes
   );
 
   const selectedCustomer = useMemo(
@@ -251,21 +277,46 @@ export default function InvoiceForm({
   const isInterState = !!effectiveStateCode && !!orgStateCode && effectiveStateCode !== orgStateCode;
 
   const totals = useMemo(() => {
+<<<<<<< Updated upstream
     let subTotal = 0, cgst = 0, sgst = 0, igst = 0;
+=======
+    let subTotal = 0,
+      cgst = 0,
+      sgst = 0,
+      igst = 0,
+      discountTotal = 0;
+>>>>>>> Stashed changes
     items.forEach((item) => {
-      const base = item.quantity * item.unitPrice;
-      const tax = (base * item.taxRate) / 100;
-      subTotal += base;
+      const lineTotal = item.quantity * item.unitPrice;
+      const taxableAmount = lineTotal - (item.discount || 0);
+      const tax = (taxableAmount * item.taxRate) / 100;
+      
+      subTotal += lineTotal;
+      discountTotal += (item.discount || 0);
+      
       if (isInterState) igst += tax;
       else { cgst += tax / 2; sgst += tax / 2; }
     });
-    return { subTotal, cgst, sgst, igst, total: subTotal + cgst + sgst + igst };
+    return { subTotal, cgst, sgst, igst, discountTotal, total: subTotal - discountTotal + cgst + sgst + igst };
   }, [items, isInterState]);
 
   const addItem = () =>
     setItems((p) => [
       ...p,
+<<<<<<< Updated upstream
       { id: crypto.randomUUID(), productId: null, description: "", hsnCode: "", quantity: 0, unitPrice: 0, taxRate: 18 },
+=======
+      {
+        id: Math.random().toString(36).substr(2, 9),
+        productId: null,
+        description: "",
+        hsnCode: "",
+        quantity: 0,
+        unitPrice: 0,
+        taxRate: 18,
+        discount: 0,
+      },
+>>>>>>> Stashed changes
     ]);
 
   const removeItem = (id: string) =>
@@ -299,7 +350,18 @@ export default function InvoiceForm({
           customerStateCode,
           customerEmail,
           customerPhone,
+<<<<<<< Updated upstream
           template: selectedTemplate,
+=======
+          customerDetails,
+          billingAddress,
+          shippingAddress: sameAsBilling ? billingAddress : shippingAddress,
+          shippingName: sameAsBilling ? customerInput : shippingName,
+          template: selectedTemplate,
+          placeOfSupply: effectiveStateCode,
+          isInterState,
+          discountTotal: totals.discountTotal,
+>>>>>>> Stashed changes
           items: items.map((i) => ({
             productId: i.productId ?? undefined,
             description: i.description,
@@ -307,6 +369,7 @@ export default function InvoiceForm({
             quantity: Number(i.quantity),
             unitPrice: Number(i.unitPrice),
             taxRate: Number(i.taxRate),
+            discount: Number(i.discount || 0),
           })),
         }),
       });
@@ -325,6 +388,16 @@ export default function InvoiceForm({
 
   const inputCls =
     "w-full border border-border bg-background rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all placeholder:text-muted-foreground/50";
+
+  // Sync address when customer selected
+  useMemo(() => {
+    if (selectedCustomer && !editMode) {
+      const addr = (selectedCustomer as any).address || "";
+      if (addr && !billingAddress) {
+        setBillingAddress(addr);
+      }
+    }
+  }, [selectedCustomer, editMode]);
 
   return (
     <>
@@ -491,6 +564,77 @@ export default function InvoiceForm({
                 </div>
               )}
             </div>
+            
+            {/* Address Details */}
+            <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-6">
+              <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                <Box className="w-4 h-4" />
+                Address Details
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* Billing Address */}
+                <div className="space-y-4">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">
+                    Billing Address
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={billingAddress}
+                    onChange={(e) => setBillingAddress(e.target.value)}
+                    placeholder="Enter customer's billing address..."
+                    className={`${inputCls} resize-none min-h-[120px]`}
+                  />
+                </div>
+
+                {/* Shipping Address */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">
+                      Shipping Address
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="sameAsBilling"
+                        checked={sameAsBilling}
+                        onChange={(e) => setSameAsBilling(e.target.checked)}
+                        className="w-3 h-3 rounded border-border text-primary focus:ring-primary/20 cursor-pointer"
+                      />
+                      <label htmlFor="sameAsBilling" className="text-[10px] font-bold text-muted-foreground cursor-pointer">
+                        Same as Billing
+                      </label>
+                    </div>
+                  </div>
+
+                  {!sameAsBilling ? (
+                    <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                      <input
+                        value={shippingName}
+                        onChange={(e) => setShippingName(e.target.value)}
+                        placeholder="Recipient Name (if different)"
+                        className={inputCls}
+                      />
+                      <textarea
+                        rows={4}
+                        value={shippingAddress}
+                        onChange={(e) => setShippingAddress(e.target.value)}
+                        placeholder="Enter shipping destination..."
+                        className={`${inputCls} resize-none min-h-[85px]`}
+                      />
+                    </div>
+                  ) : (
+                    <div className="h-[120px] rounded-xl border border-dashed border-border bg-secondary/20 flex flex-col items-center justify-center text-center p-4">
+                      <CheckCircle2 className="w-5 h-5 text-primary/40 mb-2" />
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-tight">
+                        Shipping to Billing Address
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
 
             {/* Line Items */}
             <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
@@ -585,6 +729,7 @@ export default function InvoiceForm({
                               className={inputCls}
                            />
                         </div>
+<<<<<<< Updated upstream
                         <div className="md:col-span-1 flex items-center justify-end">
                            <span className="text-xs font-bold text-slate-900">₹{((item.quantity || 0) * (item.unitPrice || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                         </div>
@@ -605,6 +750,113 @@ export default function InvoiceForm({
                             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Line Total</span>
                             <span className="text-sm font-bold">₹{((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0)).toLocaleString('en-IN')}</span>
                          </div>
+=======
+                        <div className="w-[100px]">
+                          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1 block">
+                            Disc (₹)
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={item.discount === 0 ? "" : item.discount}
+                            onChange={(e) =>
+                              updateItem(
+                                item.id,
+                                "discount",
+                                Number(e.target.value) || 0,
+                              )
+                            }
+                            className={inputCls}
+                          />
+                        </div>
+                        <div className="w-[100px]">
+                          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1 block">
+                            GST %
+                          </label>
+                          <select
+                            value={item.taxRate}
+                            onChange={(e) =>
+                              updateItem(
+                                item.id,
+                                "taxRate",
+                                Number(e.target.value),
+                              )
+                            }
+                            className="w-full h-[42px] text-xs font-bold bg-secondary/50 border border-border rounded-xl px-2 py-1 focus:ring-2 focus:ring-primary/20"
+                          >
+                            {[0, 5, 12, 18, 28].map((r) => (
+                              <option key={r} value={r}>
+                                {r}%
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Tax Breakdown & Totals */}
+                      <div className="flex flex-wrap gap-4 items-end bg-primary/5 p-4 rounded-2xl border border-primary/10">
+                        {isInterState ? (
+                          <div className="w-[90px]">
+                            <label className="text-[9px] font-bold text-primary/60 uppercase tracking-tighter mb-1 block">
+                              IGST ({item.taxRate}%)
+                            </label>
+                            <div className="text-xs font-bold tabular-nums text-primary">
+                              ₹{((item.quantity * item.unitPrice * item.taxRate) / 100).toFixed(2)}
+                            </div>
+                          </div>
+                        ) : null}
+                        
+                        <div className="w-[90px]">
+                          <label className="text-[9px] font-bold text-muted-foreground uppercase tracking-tighter mb-1 block">
+                            CGST ({item.taxRate / 2}%)
+                          </label>
+                          <div className="text-xs font-bold tabular-nums">
+                            ₹{!isInterState ? ((item.quantity * item.unitPrice * (item.taxRate / 2)) / 100).toFixed(2) : "0.00"}
+                          </div>
+                        </div>
+                        <div className="w-[90px]">
+                          <label className="text-[9px] font-bold text-muted-foreground uppercase tracking-tighter mb-1 block">
+                            SGST ({item.taxRate / 2}%)
+                          </label>
+                          <div className="text-xs font-bold tabular-nums">
+                            ₹{!isInterState ? ((item.quantity * item.unitPrice * (item.taxRate / 2)) / 100).toFixed(2) : "0.00"}
+                          </div>
+                        </div>
+                        
+                        <div className="w-[140px] ml-auto">
+                          <label className="text-[10px] font-bold text-primary uppercase tracking-widest mb-1 block">
+                            Total (Incl. Tax)
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="0.00"
+                            key={`total-${item.id}-${item.unitPrice}-${item.quantity}-${item.taxRate}`}
+                            defaultValue={(
+                              ((item.quantity || 0) * (item.unitPrice || 0) - (item.discount || 0)) *
+                              (1 + (item.taxRate || 0) / 100)
+                            ).toFixed(2)}
+                            onBlur={(e) => {
+                              const totalInclTax = Number(e.target.value) || 0;
+                              const qty = item.quantity || 1;
+                              const taxRate = item.taxRate || 0;
+                              const disc = item.discount || 0;
+                              const newUnitPrice = (totalInclTax / (1 + taxRate / 100) + disc) / qty;
+                              updateItem(item.id, "unitPrice", newUnitPrice);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                (e.target as HTMLInputElement).blur();
+                              }
+                            }}
+                            className={`${inputCls} border-primary/40 bg-white font-bold text-primary focus:ring-primary/30`}
+                          />
+                        </div>
+>>>>>>> Stashed changes
                       </div>
                     </div>
                   ))}
@@ -623,10 +875,39 @@ export default function InvoiceForm({
           {/* Sticky Summary Sidebar */}
           <div className="lg:sticky lg:top-8 space-y-6">
             <div className="bg-card border border-border rounded-2xl p-6 shadow-xl relative overflow-hidden">
+<<<<<<< Updated upstream
                <div className="absolute top-0 left-0 w-full h-1 bg-primary" />
                <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-6">Invoice Summary</h3>
                
                <div className="space-y-3 mb-6">
+=======
+              <div className="absolute top-0 left-0 w-full h-1 bg-primary" />
+              <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-6">
+                Invoice Summary
+              </h3>
+
+              <div className="space-y-3 mb-6">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Subtotal</span>
+                  <span className="font-semibold">
+                    ₹{totals.subTotal.toLocaleString("en-IN")}
+                  </span>
+                </div>
+
+                {totals.discountTotal > 0 && (
+                  <div className="flex justify-between text-sm text-green-600 font-medium">
+                    <span className="flex items-center gap-1.5">
+                      <TrendingUp className="w-3.5 h-3.5 rotate-180" />
+                      Total Discount
+                    </span>
+                    <span>
+                      -₹{totals.discountTotal.toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                )}
+
+                {isInterState ? (
+>>>>>>> Stashed changes
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Subtotal</span>
                     <span className="font-semibold">₹{totals.subTotal.toLocaleString('en-IN')}</span>

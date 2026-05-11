@@ -13,6 +13,7 @@ export interface ProcessedItem {
   cgstAmount: number;
   sgstAmount: number;
   igstAmount: number;
+  discount: number;
   total: number;
   /** Optional catalog link; validated server-side against the organization. */
   productId?: string | null;
@@ -23,6 +24,7 @@ export interface InvoiceTotals {
   cgstTotal: number;
   sgstTotal: number;
   igstTotal: number;
+  discountTotal: number;
   grandTotal: number;
   processedItems: ProcessedItem[];
 }
@@ -39,20 +41,24 @@ type LineInput = {
   quantity: unknown;
   unitPrice: unknown;
   taxRate?: unknown;
+  discount?: unknown;
   productId?: string | null;
 };
 
 export function computeInvoiceTotals(items: LineInput[], isInterState: boolean): InvoiceTotals {
-  let subTotal = 0, cgstTotal = 0, sgstTotal = 0, igstTotal = 0;
+  let subTotal = 0, cgstTotal = 0, sgstTotal = 0, igstTotal = 0, discountTotal = 0;
 
   const processedItems: ProcessedItem[] = items.map((item) => {
     const qty = Number(item.quantity) || 0;
     const price = Number(item.unitPrice) || 0;
     const taxRate = Number(item.taxRate) || 0;
+    const disc = Number(item.discount) || 0;
     const itemSub = qty * price;
-    const taxes = calculateGST(itemSub, taxRate, isInterState);
+    const taxableAmount = itemSub - disc;
+    const taxes = calculateGST(taxableAmount, taxRate, isInterState);
 
     subTotal += itemSub;
+    discountTotal += disc;
     cgstTotal += taxes.cgst;
     sgstTotal += taxes.sgst;
     igstTotal += taxes.igst;
@@ -66,7 +72,8 @@ export function computeInvoiceTotals(items: LineInput[], isInterState: boolean):
       cgstAmount: taxes.cgst,
       sgstAmount: taxes.sgst,
       igstAmount: taxes.igst,
-      total: itemSub + taxes.cgst + taxes.sgst + taxes.igst,
+      discount: disc,
+      total: taxableAmount + taxes.cgst + taxes.sgst + taxes.igst,
       productId: item.productId ?? null,
     };
   });
@@ -76,7 +83,8 @@ export function computeInvoiceTotals(items: LineInput[], isInterState: boolean):
     cgstTotal,
     sgstTotal,
     igstTotal,
-    grandTotal: subTotal + cgstTotal + sgstTotal + igstTotal,
+    discountTotal,
+    grandTotal: (subTotal - discountTotal) + cgstTotal + sgstTotal + igstTotal,
     processedItems,
   };
 }
