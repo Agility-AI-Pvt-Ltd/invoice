@@ -1369,13 +1369,13 @@ export default function TypewriterSection() {
             <p
               style={{
                 fontFamily: "'Bricolage Grotesque', sans-serif",
-                fontSize: "clamp(2.6rem, 5.5vw, 4.2rem)",
+                fontSize: "clamp(1.75rem, 3.8vw, 2.95rem)",
                 fontWeight: 800,
                 color: "#1a1340",
                 letterSpacing: "-0.03em",
                 lineHeight: 1.1,
                 margin: 0,
-                maxWidth: 700,
+                maxWidth: 980,
                 marginLeft: "auto",
                 marginRight: "auto",
               }}
@@ -1383,7 +1383,7 @@ export default function TypewriterSection() {
               Generate professional invoices{" "}
               <span
                 style={{
-                  WebkitTextStroke: "1.5px #4f35d2",
+                  WebkitTextStroke: "1.2px #4f35d2",
                   WebkitTextFillColor: "transparent",
                 }}
               >
@@ -1409,13 +1409,13 @@ export default function TypewriterSection() {
             <p
               style={{
                 fontFamily: "'Bricolage Grotesque', sans-serif",
-                fontSize: "clamp(2.8rem, 5.5vw, 4.5rem)",
+                fontSize: "clamp(1.75rem, 3.8vw, 2.95rem)",
                 fontWeight: 800,
                 color: "#1a1340",
                 letterSpacing: "-0.03em",
                 lineHeight: 1.1,
                 margin: 0,
-                maxWidth: 700,
+                maxWidth: 980,
                 marginLeft: "auto",
                 marginRight: "auto",
               }}
@@ -1423,11 +1423,11 @@ export default function TypewriterSection() {
               Send invoices{" "}
               <span
                 style={{
-                  WebkitTextStroke: "1.5px #4f35d2",
+                  WebkitTextStroke: "1.2px #4f35d2",
                   WebkitTextFillColor: "transparent",
                 }}
               >
-                directly via email
+                directly <br /> via email
               </span>{" "}
               with payment links
             </p>
@@ -1449,13 +1449,13 @@ export default function TypewriterSection() {
             <p
               style={{
                 fontFamily: "'Bricolage Grotesque', sans-serif",
-                fontSize: "clamp(2.8rem, 5.5vw, 4.5rem)",
+                fontSize: "clamp(1.75rem, 3.8vw, 2.95rem)",
                 fontWeight: 800,
                 color: "#1a1340",
                 letterSpacing: "-0.03em",
                 lineHeight: 1.1,
                 margin: 0,
-                maxWidth: 700,
+                maxWidth: 980,
                 marginLeft: "auto",
                 marginRight: "auto",
               }}
@@ -1463,7 +1463,7 @@ export default function TypewriterSection() {
               Support{" "}
               <span
                 style={{
-                  WebkitTextStroke: "1.5px #4f35d2",
+                  WebkitTextStroke: "1.2px #4f35d2",
                   WebkitTextFillColor: "transparent",
                 }}
               >

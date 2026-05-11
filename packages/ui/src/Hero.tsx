@@ -171,7 +171,7 @@ const GlobalStyles = () => (
       color: var(--text-dark);
       line-height: 0.95;
       letter-spacing: -0.05em;
-      max-width: 900px;
+      max-width: 1120px;
       margin-bottom: 32px;
       opacity: 0;
       animation: fadeUp 0.8s ease forwards 0.1s;
@@ -185,7 +185,7 @@ const GlobalStyles = () => (
     .hero-sub {
       color: var(--text-light);
       font-size: clamp(1.1rem, 1.8vw, 1.35rem);
-      max-width: 600px;
+      max-width: 820px;
       margin: 0 auto 56px;
       line-height: 1.5;
       font-weight: 400;

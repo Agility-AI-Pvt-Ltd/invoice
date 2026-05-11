@@ -191,7 +191,7 @@ export async function PUT(
 
 // DELETE /api/invoices/[id] — soft-cancel only; never hard-delete financial records
 export async function DELETE(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
@@ -200,6 +200,20 @@ export async function DELETE(
     const organizationId = user?.ownedOrgs?.[0]?.id;
     if (!organizationId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    let remark = "";
+    try {
+      const body = await req.json().catch(() => null);
+      remark = typeof body?.remark === "string" ? body.remark.trim() : "";
+    } catch {
+      remark = "";
+    }
+    if (!remark) {
+      return NextResponse.json(
+        { error: "A cancellation remark is required." },
+        { status: 400 },
+      );
     }
 
     const existing = await prisma.invoice.findUnique({
@@ -222,14 +236,17 @@ export async function DELETE(
 
     // Always soft-cancel — financial records must never be hard-deleted
     await prisma.$transaction([
-      prisma.invoice.update({ where: { id }, data: { status: "CANCELLED" } }),
+      prisma.invoice.update({
+        where: { id },
+        data: { status: "CANCELLED", cancelRemark: remark },
+      }),
       prisma.activityLog.create({
         data: {
           organizationId,
           entity: "Invoice",
           entityId: id,
           action: "CANCELLED",
-          meta: { previousStatus: existing.status },
+          meta: { previousStatus: existing.status, remark },
         },
       }),
     ]);
