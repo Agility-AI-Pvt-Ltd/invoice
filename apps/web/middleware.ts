@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
+  console.log(`[Middleware] Path: ${request.nextUrl.pathname}`);
   const response = NextResponse.next();
 
   // Security Headers
@@ -25,7 +26,7 @@ export function middleware(request: NextRequest) {
     "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
     "style-src 'self' 'unsafe-inline'; " +
     "img-src 'self' data: https:; " +
-    "font-src 'self' data:; " +
+    "font-src 'self' data: https: https://*.scite.ai moz-extension: chrome-extension:; " +
     "connect-src 'self' https:; " +
     "frame-ancestors 'none'; " +
     "base-uri 'self'; " +

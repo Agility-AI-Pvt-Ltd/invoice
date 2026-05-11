@@ -226,7 +226,7 @@ function ModernTemplate({ invoice, isInterState }: any) {
                   <p className="font-bold text-slate-800">{item.description}</p>
                   {item.hsnCode && <p className="text-[10px] text-slate-400 mt-1 font-mono">HSN: {item.hsnCode}</p>}
                 </td>
-                <td className="py-6 text-center font-medium">{item.quantity}</td>
+                <td className="py-6 text-center font-medium">{Number(item.quantity)}</td>
                 <td className="py-6 text-right font-medium">{fmt(item.unitPrice)}</td>
                 <td className="py-6 text-center text-slate-400 text-[10px] font-bold">
                   {Number(item.taxRate)}%
@@ -354,7 +354,7 @@ function ClassicTemplate({ invoice, isInterState }: any) {
                   </span>
                 </div>
               </td>
-              <td className="px-6 py-6 text-center font-bold text-slate-600">{item.quantity}</td>
+              <td className="px-6 py-6 text-center font-bold text-slate-600">{Number(item.quantity)}</td>
               <td className="px-6 py-6 text-right font-medium text-slate-600">{fmt(item.unitPrice)}</td>
               <td className="px-6 py-6 text-right text-green-600 font-bold">{Number(item.discount) > 0 ? `-${fmt(item.discount)}` : '-'}</td>
               <td className="px-6 py-6 text-right font-black text-slate-900">{fmt(Number(item.quantity) * Number(item.unitPrice) - Number(item.discount || 0))}</td>
@@ -463,7 +463,7 @@ function MinimalTemplate({ invoice, isInterState }: any) {
                 </span>
               </div>
             </div>
-            <div className="col-span-1 text-center font-bold text-slate-400">{item.quantity}</div>
+            <div className="col-span-1 text-center font-bold text-slate-400">{Number(item.quantity)}</div>
             <div className="col-span-2 text-right text-green-600 font-bold">
               {Number(item.discount) > 0 ? `-${fmt(item.discount)}` : '-'}
             </div>
