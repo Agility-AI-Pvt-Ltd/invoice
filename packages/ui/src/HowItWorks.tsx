@@ -4,10 +4,8 @@ import { useState } from "react";
 
 const GlobalStyles = () => (
   <style>{`
-    @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=DM+Sans:wght@400;500;600&display=swap');
-
     .hiw-root {
-      font-family: 'DM Sans', sans-serif;
+      font-family: var(--font-marketing-body), sans-serif;
       background: #ffffff;
       color: #1a1340;
       overflow: hidden;
@@ -132,7 +130,7 @@ const GlobalStyles = () => (
       justify-content: center;
     }
     .hiw-h2 {
-      font-family: 'Bricolage Grotesque', sans-serif;
+      font-family: var(--font-marketing-display), sans-serif;
       font-size: clamp(2rem, 4vw, 3rem);
       font-weight: 800;
       color: #1a1340;
@@ -172,7 +170,7 @@ const GlobalStyles = () => (
       cursor: pointer;
       border: none;
       background: transparent;
-      font-family: 'DM Sans', sans-serif;
+      font-family: var(--font-marketing-body), sans-serif;
       transition: all 0.18s;
     }
     .hiw-tab:hover { color: #4a4468; }
@@ -216,7 +214,7 @@ const GlobalStyles = () => (
       margin-bottom: 18px;
     }
     .panel-h3 {
-      font-family: 'Bricolage Grotesque', sans-serif;
+      font-family: var(--font-marketing-display), sans-serif;
       font-size: clamp(1.7rem, 3vw, 2.4rem);
       font-weight: 800;
       color: #1a1340;
@@ -237,7 +235,7 @@ const GlobalStyles = () => (
       border: none;
       padding: 13px 28px;
       border-radius: 100px;
-      font-family: 'DM Sans', sans-serif;
+      font-family: var(--font-marketing-body), sans-serif;
       font-size: 0.92rem;
       font-weight: 600;
       cursor: pointer;
@@ -259,7 +257,7 @@ const GlobalStyles = () => (
       border: 1px solid rgba(79,53,210,0.08);
     }
     .chart-card-title {
-      font-family: 'Bricolage Grotesque', sans-serif;
+      font-family: var(--font-marketing-display), sans-serif;
       font-size: 0.95rem;
       font-weight: 700;
       color: #1a1340;
@@ -307,7 +305,7 @@ const GlobalStyles = () => (
       margin-bottom: 20px;
     }
     .inv-brand {
-      font-family: 'Bricolage Grotesque', sans-serif;
+      font-family: var(--font-marketing-display), sans-serif;
       font-weight: 800;
       font-size: 1rem;
       color: #1a1340;
@@ -339,7 +337,7 @@ const GlobalStyles = () => (
     }
     .inv-total-label { font-weight: 600; font-size: 0.9rem; color: #1a1340; }
     .inv-total-amt {
-      font-family: 'Bricolage Grotesque', sans-serif;
+      font-family: var(--font-marketing-display), sans-serif;
       font-size: 1.2rem;
       font-weight: 800;
       color: #4f35d2;
@@ -377,7 +375,7 @@ const GlobalStyles = () => (
     .rt-left { display: flex; align-items: center; gap: 10px; }
     .rt-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
     .rt-label { font-size: 0.84rem; color: #4a4468; font-weight: 500; }
-    .rt-val { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 0.92rem; color: #1a1340; }
+    .rt-val { font-family: var(--font-marketing-display), sans-serif; font-weight: 700; font-size: 0.92rem; color: #1a1340; }
     .rt-badge { font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 6px; }
 
     @media (max-width: 768px) {
@@ -437,7 +435,7 @@ const RevenueChart = () => (
       fill="white"
       fontSize="9"
       fontWeight="700"
-      fontFamily="sans-serif"
+      fontFamily="var(--font-marketing-body), sans-serif"
     >
       $84.2k
     </text>
@@ -652,7 +650,7 @@ export default function HowItWorks() {
                 <div className="realtime-card">
                   <div
                     style={{
-                      fontFamily: "'Bricolage Grotesque',sans-serif",
+                      fontFamily: "var(--font-marketing-display), sans-serif",
                       fontWeight: 700,
                       fontSize: "0.95rem",
                       color: "#1a1340",

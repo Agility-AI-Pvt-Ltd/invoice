@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
   MoreHorizontal,
@@ -131,10 +132,10 @@ export function InvoiceActions({
 
   const isEditable = invoiceStatus === "DRAFT" || invoiceStatus === "SENT";
 
-  return (
-    <>
-      {showCancelModal && (
-        <div className="fixed inset-0 z-100 flex items-center justify-center animate-in">
+  const cancelModal =
+    showCancelModal &&
+    createPortal(
+      <div className="fixed inset-0 z-[99999] flex items-center justify-center animate-in">
           <div
             className="absolute inset-0 bg-background/80 backdrop-blur-sm"
             onClick={() => !isCancelling && closeCancelModal()}
@@ -198,11 +199,14 @@ export function InvoiceActions({
               </button>
             </div>
           </div>
-        </div>
-      )}
+        </div>,
+      document.body,
+    );
 
-      {showPurgeModal && (
-        <div className="fixed inset-0 z-100 flex items-center justify-center animate-in overflow-y-auto py-8">
+  const purgeModal =
+    showPurgeModal &&
+    createPortal(
+      <div className="fixed inset-0 z-[99999] flex items-center justify-center animate-in overflow-y-auto py-8">
           <div
             className="absolute inset-0 bg-background/80 backdrop-blur-sm"
             onClick={() => !isPurging && closePurgeModal()}
@@ -313,8 +317,14 @@ export function InvoiceActions({
               </button>
             </div>
           </div>
-        </div>
-      )}
+        </div>,
+      document.body,
+    );
+
+  return (
+    <>
+      {cancelModal}
+      {purgeModal}
 
       <div className="relative" ref={menuRef}>
         <button

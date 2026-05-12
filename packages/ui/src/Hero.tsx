@@ -1,12 +1,6 @@
-"use client";
-
-import { useRef, useState } from "react";
-
 // Inline styles as a style tag component
 const GlobalStyles = () => (
   <style>{`
-    @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap');
-
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
@@ -20,7 +14,7 @@ const GlobalStyles = () => (
     }
 
     .hero-root {
-      font-family: 'DM Sans', sans-serif;
+      font-family: var(--font-marketing-body), sans-serif;
       background: linear-gradient(135deg, #fdfcff 0%, #f4f7ff 40%, #fefaff 100%);
       height: 100%;
       width: 100%;
@@ -38,12 +32,6 @@ const GlobalStyles = () => (
       height: 100%;
       object-fit: cover;
       z-index: 0;
-      opacity: 0;
-      transition: opacity 1.4s ease;
-    }
-
-    .hero-video.ready {
-      opacity: 1;
     }
 
     .hero-overlay {
@@ -62,7 +50,7 @@ const GlobalStyles = () => (
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 16px 32px;
+      padding: 16px 32px 16px 12px;
       margin: 0px auto 0;
       width: min(1100px, calc(100% - 40px));
       position: relative;
@@ -73,7 +61,7 @@ const GlobalStyles = () => (
       display: flex;
       align-items: center;
       gap: 10px;
-      font-family: 'Bricolage Grotesque', sans-serif;
+      font-family: var(--font-marketing-display), sans-serif;
       font-weight: 800;
       font-size: 1.85rem;
       color: var(--text-dark);
@@ -94,7 +82,7 @@ const GlobalStyles = () => (
     }
 
     .nav-logo-subtitle {
-      font-family: 'DM Sans', sans-serif;
+      font-family: var(--font-marketing-body), sans-serif;
       font-size: 0.72rem;
       font-weight: 500;
       letter-spacing: 0.01em;
@@ -139,7 +127,7 @@ const GlobalStyles = () => (
       border: none;
       padding: 10px 20px;
       border-radius: 100px;
-      font-family: 'DM Sans', sans-serif;
+      font-family: var(--font-marketing-body), sans-serif;
       font-size: 0.85rem;
       font-weight: 600;
       cursor: pointer;
@@ -165,7 +153,7 @@ const GlobalStyles = () => (
     }
 
     .hero-heading {
-      font-family: 'Bricolage Grotesque', sans-serif;
+      font-family: var(--font-marketing-display), sans-serif;
       font-size: clamp(3.5rem, 9vw, 6.5rem);
       font-weight: 800;
       color: var(--text-dark);
@@ -207,7 +195,7 @@ const GlobalStyles = () => (
       border: none;
       padding: 16px 36px;
       border-radius: 100px;
-      font-family: 'DM Sans', sans-serif;
+      font-family: var(--font-marketing-body), sans-serif;
       font-size: 1rem;
       font-weight: 600;
       cursor: pointer;
@@ -225,7 +213,7 @@ const GlobalStyles = () => (
       border: 1px solid rgba(0,0,0,0.1);
       padding: 16px 36px;
       border-radius: 100px;
-      font-family: 'DM Sans', sans-serif;
+      font-family: var(--font-marketing-body), sans-serif;
       font-size: 1rem;
       font-weight: 600;
       cursor: pointer;
@@ -250,7 +238,7 @@ const GlobalStyles = () => (
     }
 
     @media (max-width: 768px) {
-      .nav { padding: 16px; }
+      .nav { padding: 16px 16px 16px 8px; }
       .nav-links { display: none; }
       .hero-heading { font-size: 3.2rem; }
       .hero-cta-group { flex-direction: column; width: 100%; max-width: 300px; }
@@ -266,29 +254,18 @@ export default function HeroSection({
   logoSrc?: string;
   brandName?: string;
 }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [videoReady, setVideoReady] = useState(false);
-
-  function handleCanPlay() {
-    const video = videoRef.current;
-    if (!video) return;
-    video.playbackRate = 0.7;
-    setVideoReady(true);
-  }
-
   return (
     <>
       <GlobalStyles />
       <div className="hero-root">
         <video
-          ref={videoRef}
-          className={`hero-video${videoReady ? " ready" : ""}`}
+          className="hero-video"
           src="/assets/herobg.mp4"
           autoPlay
           loop
           muted
           playsInline
-          onCanPlay={handleCanPlay}
+          preload="auto"
         />
         <div className="hero-overlay" />
 
@@ -320,9 +297,13 @@ export default function HeroSection({
           </a>
 
           <ul className="nav-links">
-            {["Product", "Features", "Pricing"].map((item) => (
-              <li key={item}>
-                <a href="#">{item}</a>
+            {[
+              { label: "Product", href: "/products" },
+              { label: "Features", href: "/features" },
+              { label: "Pricing", href: "/pricing" },
+            ].map(({ label, href }) => (
+              <li key={href}>
+                <a href={href}>{label}</a>
               </li>
             ))}
           </ul>
@@ -350,7 +331,9 @@ export default function HeroSection({
           </p>
 
           <div className="hero-cta-group">
-            <button className="btn-main">Get Started Free</button>
+            <a href="/login" className="btn-main">
+              Get Started Free
+            </a>
             <button className="btn-outline">Watch Demo</button>
           </div>
         </div>

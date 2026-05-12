@@ -87,10 +87,20 @@
 }
 
 @layer base {
+  /*
+    Motion / useScroll measures scroll offsets against positioned ancestors.
+    Without this, dev warns: container must have a non-static position.
+    https://github.com/motiondivision/motion/issues/2880
+  */
+  html {
+    position: relative;
+  }
+
   * {
     border-color: var(--border);
   }
   body {
+    position: relative;
     background-color: var(--background);
     color: var(--foreground);
     font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;

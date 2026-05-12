@@ -51,9 +51,16 @@ export default async function InventoryPage() {
       </div>
 
       {!org?.inventoryTrackingEnabled ? (
-        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 px-5 py-4 text-sm text-amber-900 dark:text-amber-100">
-          Inventory tracking is off. Enable <span className="font-semibold">Track inventory (stock)</span> under{" "}
-          <Link href="/dashboard/settings" className="underline font-medium">
+        <div className="rounded-2xl border border-amber-600/40 bg-amber-50 px-5 py-4 text-sm text-amber-950 shadow-sm dark:border-amber-400/45 dark:bg-amber-950/75 dark:text-amber-50 dark:shadow-none">
+          Inventory tracking is off. Enable{" "}
+          <span className="font-semibold text-amber-900 dark:text-amber-100">
+            Track inventory (stock)
+          </span>{" "}
+          under{" "}
+          <Link
+            href="/dashboard/settings"
+            className="font-semibold text-primary underline decoration-primary/60 underline-offset-2 hover:decoration-primary dark:text-primary dark:decoration-primary/70"
+          >
             Settings → Business
           </Link>{" "}
           to record deductions when payments are recorded (partial or full).
