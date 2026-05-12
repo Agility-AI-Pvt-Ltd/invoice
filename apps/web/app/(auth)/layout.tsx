@@ -17,7 +17,7 @@ export default function AuthLayout({
           <Link href="/" className="inline-flex items-center gap-3 mb-12 group">
             <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center shadow-lg shadow-primary/20 transition-transform group-hover:scale-105 overflow-hidden p-0.5">
               <Image
-                src="/assets/Invoicely_logo_Final.png"
+                src="/assets/invoicely.png"
                 alt=""
                 width={40}
                 height={40}
@@ -84,7 +84,7 @@ export default function AuthLayout({
                 RS
               </div>
               <div>
-                <p className="text-xs font-bold">Ryan Shukla</p>
+                <p className="text-xs font-bold">Sharadd Raaj Utsav</p>
                 <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">
                   Founder, Agility AI
                 </p>
