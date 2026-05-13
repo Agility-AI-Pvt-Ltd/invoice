@@ -16,6 +16,7 @@ export default async function NewInvoicePage() {
         stateCode: true,
         email: true,
         phone: true,
+        address: true,
       },
       orderBy: { name: "asc" },
     }),

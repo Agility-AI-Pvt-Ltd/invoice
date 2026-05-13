@@ -49,6 +49,7 @@ export default function DashboardLayout({
                 width={28}
                 height={28}
                 className="rounded-lg object-contain shadow-sm"
+                style={{ width: "auto", height: "auto" }}
               />
             </div>
             <span className="text-xl font-bold tracking-tight heading-display text-foreground">

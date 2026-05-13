@@ -19,7 +19,7 @@ export async function POST(
     if (!orgAccess.hasAccess) {
       return NextResponse.json(
         { error: orgAccess.error.message },
-        { status: orgAccess.error.statusCode }
+        { status: orgAccess.error.status }
       );
     }
 
@@ -118,7 +118,7 @@ export async function POST(
     );
 
     // Build UPI QR data string — only when org has a configured UPI ID
-    const upiId = (invoice.organization as any).upiId as string | null;
+    const upiId = invoice.organization.upiId;
     const upiQrData = upiId
       ? `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(invoice.organization.name)}&am=${remaining.toFixed(2)}&tn=${encodeURIComponent(`Invoice ${invoice.invoiceNumber}`)}&cu=INR`
       : null;
@@ -137,12 +137,16 @@ export async function POST(
     });
 
     // Update invoice status and log
+    const statusUpdatePromise = invoice.status === "DRAFT"
+      ? prisma.invoice.update({
+          where: { id, organizationId: orgId },
+          data: { status: "SENT" },
+        })
+      : Promise.resolve();
+
     await Promise.all([
-      prisma.invoice.update({
-        where: { id, organizationId: orgId },
-        data: { status: "SENT" },
-      }),
-      logApiAction(orgId, "Invoice", id, "PAYMENT_LINK_GENERATED", {
+      statusUpdatePromise,
+      logApiAction(prisma, orgId, "Invoice", id, "PAYMENT_LINK_GENERATED", {
         provider: "RAZORPAY",
         externalId: rzpLink.id,
         shortUrl: rzpLink.short_url,

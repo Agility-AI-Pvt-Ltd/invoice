@@ -28,11 +28,42 @@ export async function DELETE(
 
     const existing = await prisma.invoice.findUnique({
       where: { id, organizationId },
-      select: { id: true, invoiceNumber: true },
+      include: { payments: { select: { id: true } } },
     });
     if (!existing) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
+
+    if (
+      existing.status === "PAID" ||
+      existing.status === "PARTIALLY_PAID" ||
+      existing.payments.length > 0
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Cannot permanently delete an invoice that has received payments.",
+        },
+        { status: 400 },
+      );
+    }
+
+    const latestInvoice = await prisma.invoice.findFirst({
+      where: { organizationId },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
+    });
+
+    if (latestInvoice?.id !== id) {
+      return NextResponse.json(
+        {
+          error:
+            "Only the most recently created invoice can be permanently deleted to maintain sequential numbering. Please 'Cancel' this invoice instead.",
+        },
+        { status: 400 },
+      );
+    }
+
     if (!confirmInvoiceNumber || confirmInvoiceNumber !== existing.invoiceNumber) {
       return NextResponse.json(
         {
@@ -43,14 +74,14 @@ export async function DELETE(
       );
     }
 
-    await prisma.$transaction([
-      prisma.activityLog.deleteMany({
+    await prisma.$transaction(async (tx) => {
+      await tx.activityLog.deleteMany({
         where: { organizationId, entity: "Invoice", entityId: id },
-      }),
-      prisma.invoice.delete({
+      });
+      await tx.invoice.delete({
         where: { id },
-      }),
-    ]);
+      });
+    });
 
     return NextResponse.json({ deleted: true });
   } catch (error) {

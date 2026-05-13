@@ -19,7 +19,7 @@ export async function PATCH(
     if (!orgAccess.hasAccess) {
       return NextResponse.json(
         { error: orgAccess.error.message },
-        { status: orgAccess.error.statusCode }
+        { status: orgAccess.error.status }
       );
     }
 

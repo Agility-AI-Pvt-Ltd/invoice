@@ -17,7 +17,7 @@ on:
     branches: [main]
 
 env:
-  PROJECT_ID: invoice-agility
+  PROJECT_ID: sunlit-arcade-496210-n7
   REGION: asia-south1
   AR_REPOSITORY: invoice-repo
   SERVICE: invoice-web

@@ -33,6 +33,7 @@ export async function buildInvoiceItemCreates(
     cgstAmount: pi.cgstAmount,
     sgstAmount: pi.sgstAmount,
     igstAmount: pi.igstAmount,
+    discount: pi.discount,
     total: pi.total,
     productId:
       rawItems[i]?.productId && validSet.has(rawItems[i].productId!)

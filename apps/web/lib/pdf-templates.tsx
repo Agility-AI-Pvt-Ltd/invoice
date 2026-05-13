@@ -34,6 +34,10 @@ type InvoiceData = {
   customerDetails?: string | null;
   placeOfSupply?: string | null;
   total: number;
+  billingAddress?: string | null;
+  shippingAddress?: string | null;
+  shippingName?: string | null;
+  discountTotal?: number | string | { toNumber?: () => number };
   items: InvoiceItem[];
 
   customer: {
@@ -169,7 +173,7 @@ const minimalStyles = StyleSheet.create({
 
 // ─── Shared helpers ──────────────────────────────────────────────────
 function LineItemsTable({ items, s, isInterState }: { items: InvoiceItem[]; s: any; isInterState: boolean }) {
-  const colW = { desc: "38%", hsn: "12%", qty: "8%", price: "14%", tax: "12%", amt: "16%" };
+  const colW = { desc: "30%", hsn: "10%", qty: "8%", price: "15%", tax: "10%", disc: "10%", amt: "17%" };
   return (
     <View>
       <View style={s.tableHead}>
@@ -178,6 +182,7 @@ function LineItemsTable({ items, s, isInterState }: { items: InvoiceItem[]; s: a
         <Text style={[s.tableHeadCell, { width: colW.qty, textAlign: "center" }]}>Qty</Text>
         <Text style={[s.tableHeadCell, { width: colW.price, textAlign: "right" }]}>Rate</Text>
         <Text style={[s.tableHeadCell, { width: colW.tax, textAlign: "center" }]}>GST%</Text>
+        <Text style={[s.tableHeadCell, { width: colW.disc, textAlign: "right" }]}>Disc</Text>
         <Text style={[s.tableHeadCell, { width: colW.amt, textAlign: "right" }]}>Amount</Text>
       </View>
       {items.map((item, i) => (
@@ -189,8 +194,11 @@ function LineItemsTable({ items, s, isInterState }: { items: InvoiceItem[]; s: a
           <Text style={[s.tableCell, { width: colW.tax, textAlign: "center", color: "#6b7280" }]}>
             {toNumber(item.taxRate)}%
           </Text>
+          <Text style={[s.tableCell, { width: colW.disc, textAlign: "right", color: "#16a34a" }]}>
+            {toNumber((item as any).discount) > 0 ? `-${fmt((item as any).discount)}` : "—"}
+          </Text>
           <Text style={[s.tableCell, { width: colW.amt, textAlign: "right", fontFamily: "Inter", fontWeight: 700 }]}>
-            {fmt(toNumber(item.quantity) * toNumber(item.unitPrice))}
+            {fmt(toNumber(item.quantity) * toNumber(item.unitPrice) - toNumber((item as any).discount || 0))}
           </Text>
         </View>
       ))}
@@ -202,7 +210,7 @@ function TaxSummaryTable({ items, s, isInterState }: { items: InvoiceItem[]; s: 
   // Group by tax rate
   const summary = items.reduce((acc: any, item) => {
     const rate = toNumber(item.taxRate);
-    const base = toNumber(item.quantity) * toNumber(item.unitPrice);
+    const base = (toNumber(item.quantity) * toNumber(item.unitPrice)) - toNumber((item as any).discount || 0);
     const tax = (base * rate) / 100;
     if (!acc[rate]) acc[rate] = { rate, taxable: 0, tax: 0 };
     acc[rate].taxable += base;
@@ -280,7 +288,7 @@ function ModernPDF({ inv }: { inv: InvoiceData }) {
               <Text style={s.colLabel}>Billed To</Text>
               <Text style={s.colValBold}>{inv.customer.name}</Text>
               {inv.customer.gstin && <Text style={s.colVal}>GSTIN: {inv.customer.gstin}</Text>}
-              {inv.customer.address && <Text style={s.colVal}>{inv.customer.address}</Text>}
+              <Text style={s.colVal}>{inv.billingAddress || inv.customer.address}</Text>
               {inv.customer.email && <Text style={s.colVal}>{inv.customer.email}</Text>}
               {inv.customerDetails && (
                 <Text style={[s.colVal, { marginTop: 8, color: "#4b5563", fontSize: 8, fontStyle: "italic" }]}>
@@ -289,14 +297,39 @@ function ModernPDF({ inv }: { inv: InvoiceData }) {
               )}
             </View>
             <View style={{ width: "45%" }}>
-              <Text style={s.colLabel}>From</Text>
-              <Text style={s.colValBold}>{inv.organization.name}</Text>
-              {inv.organization.gstin && <Text style={s.colVal}>GSTIN: {inv.organization.gstin}</Text>}
-              {inv.organization.address && <Text style={s.colVal}>{inv.organization.address}</Text>}
-              <Text style={[s.colVal, { marginTop: 10, color: "#6b7280" }]}>
-                Place of Supply: {inv.placeOfSupply || inv.organization.stateCode}
-              </Text>
+              {inv.shippingAddress ? (
+                <>
+                  <Text style={s.colLabel}>Shipped To</Text>
+                  <Text style={s.colValBold}>{inv.shippingName || inv.customer.name}</Text>
+                  <Text style={s.colVal}>{inv.shippingAddress}</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={s.colLabel}>From</Text>
+                  <Text style={s.colValBold}>{inv.organization.name}</Text>
+                  {inv.organization.gstin && <Text style={s.colVal}>GSTIN: {inv.organization.gstin}</Text>}
+                  {inv.organization.address && <Text style={s.colVal}>{inv.organization.address}</Text>}
+                </>
+              )}
             </View>
+          </View>
+
+          {/* Place of Supply moved if Ship To is shown */}
+          {inv.shippingAddress && (
+            <View style={[s.twoCol, { marginTop: -12, marginBottom: 24 }]}>
+               <View style={{ width: "45%" }} />
+               <View style={{ width: "45%" }}>
+                  <Text style={s.colLabel}>From</Text>
+                  <Text style={s.colValBold}>{inv.organization.name}</Text>
+                  {inv.organization.gstin && <Text style={s.colVal}>GSTIN: {inv.organization.gstin}</Text>}
+                  {inv.organization.address && <Text style={s.colVal}>{inv.organization.address}</Text>}
+               </View>
+            </View>
+          )}
+
+          <View style={{ marginBottom: 20 }}>
+             <Text style={[s.colLabel, { color: "#6b7280" }]}>Place of Supply</Text>
+             <Text style={s.colVal}>{inv.placeOfSupply || inv.organization.stateCode}</Text>
           </View>
 
           <LineItemsTable items={inv.items} s={s} isInterState={isInterState} />
@@ -311,6 +344,12 @@ function ModernPDF({ inv }: { inv: InvoiceData }) {
                   <View style={s.totalRow}><Text style={s.totalLabel}>SGST</Text><Text style={s.totalVal}>{fmt(inv.sgstTotal)}</Text></View>
                 </>
             }
+            {Number(toNumber(inv.discountTotal)) > 0 && (
+              <View style={s.totalRow}>
+                <Text style={[s.totalLabel, { color: "#16a34a" }]}>Discount</Text>
+                <Text style={[s.totalVal, { color: "#16a34a" }]}>-{fmt(inv.discountTotal)}</Text>
+              </View>
+            )}
             <View style={[s.totalRow, { borderTopWidth: 1.5, borderTopColor: "#111827", marginTop: 8, paddingTop: 8 }]}>
               <Text style={s.grandLabel}>Total Due</Text>
               <Text style={s.grandVal}>{fmt(inv.total)}</Text>
@@ -366,7 +405,7 @@ function ClassicPDF({ inv }: { inv: InvoiceData }) {
                 <Text style={s.colLabel}>Bill To</Text>
                 <Text style={s.colValBold}>{inv.customer.name}</Text>
                 {inv.customer.gstin && <Text style={s.colVal}>GSTIN: {inv.customer.gstin}</Text>}
-                {inv.customer.address && <Text style={s.colVal}>{inv.customer.address}</Text>}
+                <Text style={s.colVal}>{inv.billingAddress || inv.customer.address}</Text>
                 {inv.customer.email && <Text style={s.colVal}>{inv.customer.email}</Text>}
                 {inv.customerDetails && (
                   <Text style={[s.colVal, { marginTop: 6, color: "#6b7280", fontStyle: "italic", fontSize: 8 }]}>
@@ -375,11 +414,32 @@ function ClassicPDF({ inv }: { inv: InvoiceData }) {
                 )}
               </View>
               <View style={{ width: "45%" }}>
-                <Text style={s.colLabel}>Payment Details</Text>
-                <Text style={[s.colVal, { color: "#6b7280" }]}>Place of Supply: {inv.placeOfSupply}</Text>
-                <Text style={[s.colVal, { color: "#6b7280", marginTop: 4 }]}>Status: {inv.status}</Text>
+                {inv.shippingAddress ? (
+                  <>
+                    <Text style={s.colLabel}>Ship To</Text>
+                    <Text style={s.colValBold}>{inv.shippingName || inv.customer.name}</Text>
+                    <Text style={s.colVal}>{inv.shippingAddress}</Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={s.colLabel}>Payment Details</Text>
+                    <Text style={[s.colVal, { color: "#6b7280" }]}>Place of Supply: {inv.placeOfSupply}</Text>
+                    <Text style={[s.colVal, { color: "#6b7280", marginTop: 4 }]}>Status: {inv.status}</Text>
+                  </>
+                )}
               </View>
             </View>
+            
+            {inv.shippingAddress && (
+              <View style={[s.twoCol, { marginTop: -10 }]}>
+                <View style={{ width: "45%" }} />
+                <View style={{ width: "45%" }}>
+                   <Text style={s.colLabel}>Payment Details</Text>
+                   <Text style={[s.colVal, { color: "#6b7280" }]}>Place of Supply: {inv.placeOfSupply}</Text>
+                   <Text style={[s.colVal, { color: "#6b7280", marginTop: 4 }]}>Status: {inv.status}</Text>
+                </View>
+              </View>
+            )}
 
             <LineItemsTable items={inv.items} s={s} isInterState={isInterState} />
             <TaxSummaryTable items={inv.items} s={s} isInterState={isInterState} />
@@ -393,6 +453,12 @@ function ClassicPDF({ inv }: { inv: InvoiceData }) {
                     <View style={s.totalRow}><Text style={s.totalLabel}>SGST</Text><Text style={s.totalVal}>{fmt(inv.sgstTotal)}</Text></View>
                   </>
               }
+              {Number(toNumber(inv.discountTotal)) > 0 && (
+                <View style={s.totalRow}>
+                  <Text style={[s.totalLabel, { color: "#16a34a" }]}>Discount</Text>
+                  <Text style={[s.totalVal, { color: "#16a34a" }]}>-{fmt(inv.discountTotal)}</Text>
+                </View>
+              )}
               <View style={[s.totalRow, { borderTopWidth: 1.5, borderTopColor: "#1a1a1a", marginTop: 8, paddingTop: 8 }]}>
                 <Text style={s.grandLabel}>Total Due</Text>
                 <Text style={s.grandVal}>{fmt(inv.total)}</Text>
@@ -440,8 +506,8 @@ function MinimalPDF({ inv }: { inv: InvoiceData }) {
             <Text style={s.colLabel}>Bill To</Text>
             <Text style={s.colValBold}>{inv.customer.name}</Text>
             {inv.customer.gstin && <Text style={s.colVal}>GSTIN: {inv.customer.gstin}</Text>}
+            <Text style={s.colVal}>{inv.billingAddress || inv.customer.address}</Text>
             {inv.customer.email && <Text style={s.colVal}>{inv.customer.email}</Text>}
-            {inv.customer.address && <Text style={s.colVal}>{inv.customer.address}</Text>}
             {inv.customerDetails && (
               <Text style={[s.colVal, { marginTop: 6, color: "#9ca3af", fontStyle: "italic", fontSize: 8 }]}>
                 {inv.customerDetails}
@@ -449,10 +515,30 @@ function MinimalPDF({ inv }: { inv: InvoiceData }) {
             )}
           </View>
           <View style={{ width: "40%", textAlign: "right" }}>
-            <Text style={s.colLabel}>Due Date</Text>
-            <Text style={[s.colValBold, { textAlign: "right" }]}>{fmtDate(inv.dueDate)}</Text>
+            {inv.shippingAddress ? (
+               <>
+                 <Text style={s.colLabel}>Ship To</Text>
+                 <Text style={s.colValBold}>{inv.shippingName || inv.customer.name}</Text>
+                 <Text style={s.colVal}>{inv.shippingAddress}</Text>
+               </>
+            ) : (
+              <>
+                <Text style={s.colLabel}>Due Date</Text>
+                <Text style={[s.colValBold, { textAlign: "right" }]}>{fmtDate(inv.dueDate)}</Text>
+              </>
+            )}
           </View>
         </View>
+
+        {inv.shippingAddress && (
+          <View style={[s.twoCol, { marginTop: -20 }]}>
+             <View style={{ width: "45%" }} />
+             <View style={{ width: "40%", textAlign: "right" }}>
+                <Text style={s.colLabel}>Due Date</Text>
+                <Text style={[s.colValBold, { textAlign: "right" }]}>{fmtDate(inv.dueDate)}</Text>
+             </View>
+          </View>
+        )}
 
         <View style={s.divider} />
         <LineItemsTable items={inv.items} s={s} isInterState={isInterState} />
@@ -467,6 +553,12 @@ function MinimalPDF({ inv }: { inv: InvoiceData }) {
                 <View style={s.totalRow}><Text style={s.totalLabel}>SGST</Text><Text style={s.totalVal}>{fmt(inv.sgstTotal)}</Text></View>
               </>
           }
+          {Number(toNumber(inv.discountTotal)) > 0 && (
+            <View style={s.totalRow}>
+              <Text style={[s.totalLabel, { color: "#16a34a" }]}>Discount</Text>
+              <Text style={[s.totalVal, { color: "#16a34a" }]}>-{fmt(inv.discountTotal)}</Text>
+            </View>
+          )}
           <View style={s.dividerLight} />
           <View style={s.totalRow}>
             <Text style={s.grandLabel}>Total</Text>

@@ -1,4 +1,4 @@
-import { Prisma } from "@repo/db";
+import { Prisma } from "@prisma/client";
 import { getOrCreateDefaultWarehouse } from "./warehouse";
 
 /** Inventory deduction runs once the invoice has started settling (cash in), not only when fully paid. */

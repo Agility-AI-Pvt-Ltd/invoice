@@ -134,7 +134,7 @@ export function InvoiceActions({
   return (
     <>
       {showCancelModal && (
-        <div className="fixed inset-0 z-100 flex items-center justify-center animate-in">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center animate-in fade-in duration-200">
           <div
             className="absolute inset-0 bg-background/80 backdrop-blur-sm"
             onClick={() => !isCancelling && closeCancelModal()}
@@ -202,7 +202,7 @@ export function InvoiceActions({
       )}
 
       {showPurgeModal && (
-        <div className="fixed inset-0 z-100 flex items-center justify-center animate-in overflow-y-auto py-8">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center animate-in fade-in duration-200 overflow-y-auto py-8">
           <div
             className="absolute inset-0 bg-background/80 backdrop-blur-sm"
             onClick={() => !isPurging && closePurgeModal()}
@@ -329,7 +329,7 @@ export function InvoiceActions({
         </button>
 
         {isOpen && (
-          <div className="absolute right-0 mt-2 w-56 bg-card border border-border rounded-xl shadow-xl py-2 z-50 animate-in fade-in zoom-in duration-200">
+          <div className="absolute right-0 mt-2 w-56 bg-card border border-border rounded-xl shadow-xl py-2 z-[50] animate-in fade-in zoom-in duration-200">
             <Link
               href={`/dashboard/invoices/${invoiceId}`}
               className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"

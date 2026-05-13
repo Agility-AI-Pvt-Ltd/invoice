@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     if (!orgAccess.hasAccess) {
       return NextResponse.json(
         { error: orgAccess.error.message },
-        { status: orgAccess.error.statusCode },
+        { status: orgAccess.error.status },
       );
     }
 
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
     });
 
     // Log action
-    await logApiAction(orgId, "Customer", customer.id, "CREATED", {
+    await logApiAction(prisma, orgId, "Customer", customer.id, "CREATED", {
       name: customer.name,
     });
 
