@@ -37,6 +37,7 @@ type InvoiceData = {
   billingAddress?: string | null;
   shippingAddress?: string | null;
   shippingName?: string | null;
+  discountTotal?: number | string | { toNumber?: () => number };
   items: InvoiceItem[];
 
   customer: {
@@ -343,7 +344,7 @@ function ModernPDF({ inv }: { inv: InvoiceData }) {
                   <View style={s.totalRow}><Text style={s.totalLabel}>SGST</Text><Text style={s.totalVal}>{fmt(inv.sgstTotal)}</Text></View>
                 </>
             }
-            {Number(inv.discountTotal) > 0 && (
+            {Number(toNumber(inv.discountTotal)) > 0 && (
               <View style={s.totalRow}>
                 <Text style={[s.totalLabel, { color: "#16a34a" }]}>Discount</Text>
                 <Text style={[s.totalVal, { color: "#16a34a" }]}>-{fmt(inv.discountTotal)}</Text>
@@ -452,7 +453,7 @@ function ClassicPDF({ inv }: { inv: InvoiceData }) {
                     <View style={s.totalRow}><Text style={s.totalLabel}>SGST</Text><Text style={s.totalVal}>{fmt(inv.sgstTotal)}</Text></View>
                   </>
               }
-              {Number(inv.discountTotal) > 0 && (
+              {Number(toNumber(inv.discountTotal)) > 0 && (
                 <View style={s.totalRow}>
                   <Text style={[s.totalLabel, { color: "#16a34a" }]}>Discount</Text>
                   <Text style={[s.totalVal, { color: "#16a34a" }]}>-{fmt(inv.discountTotal)}</Text>
@@ -552,7 +553,7 @@ function MinimalPDF({ inv }: { inv: InvoiceData }) {
                 <View style={s.totalRow}><Text style={s.totalLabel}>SGST</Text><Text style={s.totalVal}>{fmt(inv.sgstTotal)}</Text></View>
               </>
           }
-          {Number(inv.discountTotal) > 0 && (
+          {Number(toNumber(inv.discountTotal)) > 0 && (
             <View style={s.totalRow}>
               <Text style={[s.totalLabel, { color: "#16a34a" }]}>Discount</Text>
               <Text style={[s.totalVal, { color: "#16a34a" }]}>-{fmt(inv.discountTotal)}</Text>

@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { prisma } from "@repo/db";
 import { redirect } from "next/navigation";
-import { ApiErrors, AppError } from "./errors";
+import { ApiErrors } from "./errors";
 import { Organization, User } from "@repo/db";
 
 /**

@@ -13,15 +13,16 @@ export default function AuthLayout({
         {/* Subtle background glow */}
         <div className="absolute -top-24 -left-24 w-96 h-96 bg-primary/5 rounded-full blur-[100px]" />
 
-        <div className="relative z-10 w-full max-w-md mx-auto">
+        <div className="relative z-10 w-full max-md mx-auto">
           <Link href="/" className="inline-flex items-center gap-3 mb-12 group">
             <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center shadow-lg shadow-primary/20 transition-transform group-hover:scale-105 overflow-hidden p-0.5">
               <Image
-                src="/assets/Invoicely_logo_Final.png"
+                src="/assets/invoicely.png"
                 alt=""
                 width={40}
                 height={40}
                 className="w-full h-full object-cover"
+                style={{ width: "auto", height: "auto" }}
               />
             </div>
             <span className="text-2xl font-bold tracking-tight heading-display">

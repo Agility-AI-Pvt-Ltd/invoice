@@ -1,0 +1,93 @@
+# Requires one-time GCP setup: Artifact Registry repo, Cloud Run service, and either
+# Workload Identity Federation (recommended) or a JSON service account key.
+#
+# GitHub repo secrets (Workload Identity Federation):
+#   GCP_WORKLOAD_IDENTITY_PROVIDER  e.g. projects/123/locations/global/.../providers/github
+#   GCP_SERVICE_ACCOUNT             e.g. gh-actions-deploy@PROJECT_ID.iam.gserviceaccount.com
+#   NEXT_PUBLIC_APP_URL             Public site URL, e.g. https://invoice-web-xxxx.a.run.app
+#
+# Alternative: replace the auth step with credentials_json: ${{ secrets.GCP_SA_KEY }}
+#
+# Cloud Run: set DATABASE_URL (Neon pooled URL) via Console or Secret Manager — not stored in GitHub.
+
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches: [main]
+
+env:
+  PROJECT_ID: sunlit-arcade-496210-n7
+  REGION: asia-south1
+  AR_REPOSITORY: invoice-repo
+  SERVICE: invoice-web
+  IMAGE_NAME: invoice-web
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate GCP auth inputs
+        shell: bash
+        run: |
+          has_wif=false
+          has_json=false
+          if [[ -n "${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}" && -n "${{ secrets.GCP_SERVICE_ACCOUNT }}" ]]; then
+            has_wif=true
+          fi
+          if [[ -n "${{ secrets.GCP_SA_KEY }}" ]]; then
+            has_json=true
+          fi
+
+          if [[ "$has_wif" == true && "$has_json" == true ]]; then
+            echo "Provide either WIF secrets (GCP_WORKLOAD_IDENTITY_PROVIDER + GCP_SERVICE_ACCOUNT) or GCP_SA_KEY, not both."
+            exit 1
+          fi
+          if [[ "$has_wif" == false && "$has_json" == false ]]; then
+            echo "Missing GCP auth secrets. Configure WIF secrets or GCP_SA_KEY."
+            echo "Note: secrets are not available to workflows from forks/Dependabot by default."
+            exit 1
+          fi
+
+      - id: auth-wif
+        if: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && secrets.GCP_SERVICE_ACCOUNT != '' }}
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - id: auth-json
+        if: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER == '' && secrets.GCP_SERVICE_ACCOUNT == '' && secrets.GCP_SA_KEY != '' }}
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build and push image
+        run: |
+          IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.AR_REPOSITORY }}/${{ env.IMAGE_NAME }}"
+          docker build \
+            --build-arg NEXT_PUBLIC_APP_URL="${{ secrets.NEXT_PUBLIC_APP_URL }}" \
+            -t "${IMAGE}:${{ github.sha }}" \
+            -t "${IMAGE}:latest" \
+            .
+          docker push "${IMAGE}:${{ github.sha }}"
+          docker push "${IMAGE}:latest"
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.SERVICE }} \
+            --image "${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.AR_REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}" \
+            --region ${{ env.REGION }} \
+            --platform managed \
+            --project ${{ env.PROJECT_ID }}

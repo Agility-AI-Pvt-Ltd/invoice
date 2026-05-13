@@ -64,8 +64,30 @@ export default async function InvoiceViewPage({ params }: { params: Promise<{ id
           total={Number(invoice.total)}
           paid={totalPaid}
           defaultTemplate={template}
+          cancelRemark={invoice.cancelRemark}
         />
       </div>
+
+      {invoice.status === "CANCELLED" && (
+        <div
+          className="rounded-2xl border border-destructive/25 bg-destructive/5 px-6 py-4 flex flex-col gap-2 shadow-sm"
+          role="status"
+        >
+          <p className="text-sm font-bold text-destructive tracking-tight">
+            This invoice is cancelled
+          </p>
+          {invoice.cancelRemark ? (
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">
+                Cancellation remark
+              </p>
+              <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+                {invoice.cancelRemark}
+              </p>
+            </div>
+          ) : null}
+        </div>
+      )}
 
       {/* Payment summary bar */}
       {totalPaid > 0 && (
@@ -551,4 +573,3 @@ function TaxBreakdownSection({ items, isInterState }: { items: any[]; isInterSta
     </div>
   );
 }
-

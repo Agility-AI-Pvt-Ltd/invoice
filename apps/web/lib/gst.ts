@@ -120,7 +120,7 @@ export function validateItems(items: unknown[]): string | null {
   for (let i = 0; i < items.length; i++) {
     const result = invoiceItemSchema.safeParse(items[i]);
     if (!result.success) {
-      const error = result.error.errors[0];
+      const error = result.error.issues[0];
       return `Item ${i + 1}: ${error?.message || "Invalid item data"}`;
     }
   }

@@ -158,7 +158,11 @@ export default async function InvoicesPage({
                       >
                         <ArrowUpRight className="w-4 h-4" />
                       </Link>
-                      <InvoiceActions invoiceId={inv.id} invoiceStatus={inv.status} />
+                      <InvoiceActions
+                        invoiceId={inv.id}
+                        invoiceNumber={inv.invoiceNumber}
+                        invoiceStatus={inv.status}
+                      />
                     </div>
                   </td>
                 </tr>

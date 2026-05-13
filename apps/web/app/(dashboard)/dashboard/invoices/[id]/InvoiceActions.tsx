@@ -426,12 +426,14 @@ export default function InvoiceActions({
   total,
   paid,
   defaultTemplate,
+  cancelRemark,
 }: {
   invoiceId: string;
   status: InvoiceStatus;
   total: number;
   paid: number;
   defaultTemplate: string;
+  cancelRemark?: string | null;
 }) {
   const router = useRouter();
   const [currentStatus, setCurrentStatus] = useState<InvoiceStatus>(status);
@@ -543,14 +545,24 @@ export default function InvoiceActions({
         />
       )}
 
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2 flex-wrap">
         {/* Status badge */}
-        <span
-          className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${cfg.cls}`}
-        >
-          {cfg.icon}
-          {cfg.label}
-        </span>
+        <div className="flex flex-col gap-1">
+          <span
+            className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full w-fit ${cfg.cls}`}
+          >
+            {cfg.icon}
+            {cfg.label}
+          </span>
+          {currentStatus === "CANCELLED" && cancelRemark ? (
+            <p className="text-[11px] text-muted-foreground max-w-md leading-snug pl-0.5">
+              <span className="font-bold text-muted-foreground/90">
+                Remark:{" "}
+              </span>
+              {cancelRemark}
+            </p>
+          ) : null}
+        </div>
 
         {/* Generate Razorpay payment link */}
         {currentStatus !== "PAID" && currentStatus !== "CANCELLED" && (

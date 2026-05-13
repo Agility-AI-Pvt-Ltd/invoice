@@ -2,14 +2,10 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@repo/db';
 import type { User, Organization } from '@repo/db';
 import { AppError, ApiErrors, handleApiError } from './errors';
+export { AppError, ApiErrors, handleApiError };
 import { logger } from './logger';
 
-/**
- * Extended User type to include owned organizations.
- */
-export type UserWithOrgs = User & {
-  ownedOrgs?: Organization[];
-};
+import { UserWithOrgs } from './auth';
 
 /**
  * Helper to verify organization access for a given user.
@@ -17,7 +13,7 @@ export type UserWithOrgs = User & {
 export function verifyOrgAccess(
   user: UserWithOrgs | null | undefined,
   organizationId: string | undefined
-): { hasAccess: true; org: Organization } | { hasAccess: false; error: AppError } {
+): { hasAccess: true; org: UserWithOrgs['ownedOrgs'][number] } | { hasAccess: false; error: AppError } {
   if (!user) {
     return { hasAccess: false, error: ApiErrors.UNAUTHORIZED() };
   }
@@ -88,7 +84,7 @@ export function errorResponse(error: string, code: string = 'BAD_REQUEST'): ApiR
 export async function requireOrgOwnership(
   user: UserWithOrgs | null | undefined,
   organizationId: string
-): Promise<{ valid: true; org: Organization } | { valid: false; error: AppError }> {
+): Promise<{ valid: true; org: UserWithOrgs['ownedOrgs'][number] } | { valid: false; error: AppError }> {
   const result = verifyOrgAccess(user, organizationId);
   if (!result.hasAccess) {
     return { valid: false, error: result.error };

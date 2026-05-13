@@ -12,7 +12,11 @@ const registerSchema = z.object({
   email: z.string().email({ message: "Invalid email address" }),
   password: z
     .string()
-    .min(6, { message: "Password must be at least 6 characters" }),
+    .min(12, { message: "Password must be at least 12 characters" })
+    .refine(
+      (pwd) => /[A-Z]/.test(pwd) && /[0-9]/.test(pwd) && /[!@#$%^&*()]/.test(pwd),
+      { message: "Password must contain uppercase, number, and special character" }
+    ),
 });
 
 type RegisterState = {

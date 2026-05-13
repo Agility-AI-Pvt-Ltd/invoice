@@ -72,12 +72,34 @@ const GlobalStyles = () => (
     .nav-logo {
       display: flex;
       align-items: center;
+      gap: 10px;
       font-family: 'Bricolage Grotesque', sans-serif;
       font-weight: 800;
       font-size: 1.85rem;
       color: var(--text-dark);
       text-decoration: none;
       letter-spacing: -0.02em;
+    }
+
+    .nav-logo-text {
+      display: flex;
+      flex-direction: column;
+      line-height: 1.05;
+    }
+
+    .nav-logo-title {
+      font-size: 1.25rem;
+      font-weight: 800;
+      color: var(--text-dark);
+    }
+
+    .nav-logo-subtitle {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.72rem;
+      font-weight: 500;
+      letter-spacing: 0.01em;
+      color: var(--text-light);
+      margin-top: 2px;
     }
 
     .nav-logo-icon {
@@ -149,7 +171,7 @@ const GlobalStyles = () => (
       color: var(--text-dark);
       line-height: 0.95;
       letter-spacing: -0.05em;
-      max-width: 900px;
+      max-width: 1120px;
       margin-bottom: 32px;
       opacity: 0;
       animation: fadeUp 0.8s ease forwards 0.1s;
@@ -163,7 +185,7 @@ const GlobalStyles = () => (
     .hero-sub {
       color: var(--text-light);
       font-size: clamp(1.1rem, 1.8vw, 1.35rem);
-      max-width: 600px;
+      max-width: 820px;
       margin: 0 auto 56px;
       line-height: 1.5;
       font-weight: 400;
@@ -237,7 +259,13 @@ const GlobalStyles = () => (
   `}</style>
 );
 
-export default function HeroSection({ logoSrc, brandName = "Invoicely" }: { logoSrc?: string; brandName?: string }) {
+export default function HeroSection({
+  logoSrc,
+  brandName = "Invoicely",
+}: {
+  logoSrc?: string;
+  brandName?: string;
+}) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [videoReady, setVideoReady] = useState(false);
 
@@ -269,11 +297,24 @@ export default function HeroSection({ logoSrc, brandName = "Invoicely" }: { logo
         <nav className="nav">
           <a href="/" className="nav-logo">
             {logoSrc ? (
-              <img className="nav-logo-icon" src={logoSrc} alt={brandName} />
+              <>
+                <img className="nav-logo-icon" src={logoSrc} alt={brandName} />
+                <span className="nav-logo-text">
+                  <span className="nav-logo-title">{brandName}</span>
+                  <span className="nav-logo-subtitle">
+                    Powered by AgilityAi
+                  </span>
+                </span>
+              </>
             ) : (
               <>
                 <div className="nav-logo-icon" aria-hidden="true" />
-                {brandName}
+                <span className="nav-logo-text">
+                  <span className="nav-logo-title">{brandName}</span>
+                  <span className="nav-logo-subtitle">
+                    Powered by AgilityAi
+                  </span>
+                </span>
               </>
             )}
           </a>
@@ -300,7 +341,7 @@ export default function HeroSection({ logoSrc, brandName = "Invoicely" }: { logo
           <h1 className="hero-heading">
             The <em>operating system</em>
             <br />
-            for your business
+            for your business.
           </h1>
 
           <p className="hero-sub">

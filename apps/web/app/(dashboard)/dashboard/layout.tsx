@@ -44,11 +44,12 @@ export default function DashboardLayout({
           <div className="flex items-center gap-2.5 group cursor-pointer">
             <div className="p-1.5 bg-primary/10 rounded-xl group-hover:bg-primary/20 transition-colors">
               <Image
-                src="/assets/Invoicely_logo_Final.png"
+                src="/assets/invoicely.png"
                 alt=""
                 width={28}
                 height={28}
                 className="rounded-lg object-contain shadow-sm"
+                style={{ width: "auto", height: "auto" }}
               />
             </div>
             <span className="text-xl font-bold tracking-tight heading-display text-foreground">

@@ -68,12 +68,12 @@ export async function PUT(
 
     if (customerStateCode) {
       const result = stateCodeSchema.safeParse(customerStateCode);
-      if (!result.success) throw ApiErrors.BAD_REQUEST(`Customer State: ${result.error.errors[0]?.message}`);
+      if (!result.success) throw ApiErrors.BAD_REQUEST(`Customer State: ${result.error.issues[0]?.message}`);
     }
 
     if (placeOfSupply) {
       const result = stateCodeSchema.safeParse(placeOfSupply);
-      if (!result.success) throw ApiErrors.BAD_REQUEST(`Place of Supply: ${result.error.errors[0]?.message}`);
+      if (!result.success) throw ApiErrors.BAD_REQUEST(`Place of Supply: ${result.error.issues[0]?.message}`);
     }
 
     if (new Date(dueDate) < new Date(issueDate)) {
@@ -184,9 +184,9 @@ export async function PUT(
   }
 }
 
-// DELETE /api/invoices/[id]
+// DELETE /api/invoices/[id] (Cancellation)
 export async function DELETE(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const context = "api:invoices:delete";
@@ -197,6 +197,18 @@ export async function DELETE(
     
     await enforceRateLimit(`invoice:delete:${organization.id}`, apiRateLimit);
 
+    let remark = "";
+    try {
+      const body = await req.json().catch(() => null);
+      remark = typeof body?.remark === "string" ? body.remark.trim() : "";
+    } catch {
+      remark = "";
+    }
+
+    if (!remark) {
+      throw ApiErrors.BAD_REQUEST("A cancellation remark is required.");
+    }
+
     await prisma.$transaction(async (tx) => {
       const existing = await tx.invoice.findUnique({
         where: { id, organizationId: organization.id },
@@ -206,14 +218,18 @@ export async function DELETE(
       if (existing.status === "PAID") throw ApiErrors.BAD_REQUEST("Cannot cancel a paid invoice.");
       if (existing.status === "CANCELLED") throw ApiErrors.BAD_REQUEST("Invoice is already cancelled.");
 
-      await tx.invoice.update({ where: { id }, data: { status: "CANCELLED" } });
+      await tx.invoice.update({ 
+        where: { id }, 
+        data: { status: "CANCELLED" } 
+      });
+
       await tx.activityLog.create({
         data: {
           organizationId: organization.id,
           entity: "Invoice",
           entityId: id,
           action: "CANCELLED",
-          meta: { previousStatus: existing.status },
+          meta: { previousStatus: existing.status, remark },
         },
       });
     });

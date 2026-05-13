@@ -18,7 +18,7 @@ import {
   Box,
 } from "lucide-react";
 
-type Customer = { id: string; name: string; stateCode: string | null };
+type Customer = { id: string; name: string; stateCode: string | null; address?: string | null };
 type Product = {
   id: string;
   name: string;
@@ -301,6 +301,7 @@ type ExistingData = {
   customerNameOrId: string;
   placeOfSupply: string;
   notes: string;
+  customerDetails?: string | null;
   billingAddress?: string | null;
   shippingAddress?: string | null;
   shippingName?: string | null;
@@ -373,10 +374,10 @@ export default function InvoiceForm({
       productId: item.productId ?? null,
       description: item.description,
       hsnCode: item.hsnCode,
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      taxRate: item.taxRate,
-      discount: (item as any).discount || 0,
+      quantity: Number(item.quantity),
+      unitPrice: Number(item.unitPrice),
+      taxRate: Number(item.taxRate),
+      discount: Number(item.discount || 0),
     })) ?? [
       {
         id: "1",
@@ -504,15 +505,17 @@ export default function InvoiceForm({
       });
       if (!res.ok) {
         const data = await res.json();
+        const errorMsg =
+          data?.error?.message ||
+          data?.error ||
+          (editMode ? "Failed to update invoice" : "Failed to create invoice");
         throw new Error(
-          data.error ||
-            (editMode
-              ? "Failed to update invoice"
-              : "Failed to create invoice"),
+          typeof errorMsg === "string" ? errorMsg : JSON.stringify(errorMsg)
         );
       }
       const saved = await res.json();
-      router.push(`/dashboard/invoices/${saved.id}`);
+      const invoiceId = saved?.data?.id || saved?.id;
+      router.push(`/dashboard/invoices/${invoiceId}`);
       router.refresh();
     } catch (err: any) {
       setError(err.message);
@@ -874,17 +877,6 @@ export default function InvoiceForm({
                 </h3>
               </div>
 
-              {/* <div className="px-6 py-3 border-b border-border bg-secondary/10 hidden md:grid grid-cols-12 gap-4">
-                 <div className="col-span-6 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Description</div>
-                 <div className="col-span-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">HSN/SAC</div>
-                 <div className="col-span-1 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Qty</div>
-                 <div className="col-span-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
-                   Rate (₹)
-                   <span className="text-[8px] opacity-40 lowercase font-medium tracking-normal">(Editable)</span>
-                 </div>
-                 <div className="col-span-1 text-[10px] font-bold text-muted-foreground uppercase tracking-widest text-right">Total</div>
-               </div> */}
-
               <datalist id="product-list">
                 {products.map((p) => (
                   <option key={p.id} value={p.name} />
@@ -1090,7 +1082,7 @@ export default function InvoiceForm({
                             min="0"
                             step="0.01"
                             placeholder="0.00"
-                            key={`total-${item.id}-${item.unitPrice}-${item.quantity}-${item.taxRate}`}
+                            key={`total-${item.id}-${item.unitPrice}-${item.quantity}-${item.taxRate}-${item.discount}`}
                             defaultValue={(
                               ((item.quantity || 0) * (item.unitPrice || 0) - (item.discount || 0)) *
                               (1 + (item.taxRate || 0) / 100)
@@ -1099,9 +1091,10 @@ export default function InvoiceForm({
                               const totalInclTax = Number(e.target.value) || 0;
                               const qty = item.quantity || 1;
                               const taxRate = item.taxRate || 0;
-                              const disc = item.discount || 0;
-                              const newUnitPrice = (totalInclTax / (1 + taxRate / 100) + disc) / qty;
-                              updateItem(item.id, "unitPrice", newUnitPrice);
+                              const unitPrice = item.unitPrice || 0;
+                              
+                              const newDiscount = (qty * unitPrice) - (totalInclTax / (1 + taxRate / 100));
+                              updateItem(item.id, "discount", Number(Math.max(0, newDiscount).toFixed(2)));
                             }}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {

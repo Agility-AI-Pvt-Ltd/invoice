@@ -47,9 +47,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
     }
 
-    const effectivePlaceOfSupply = customer.stateCode;
-    const isInterState = organization.stateCode !== effectivePlaceOfSupply;
-    const { subTotal, cgstTotal, sgstTotal, igstTotal, grandTotal, processedItems } =
+    const effectivePlaceOfSupply = customer.stateCode || organization.stateCode;
+    if (!effectivePlaceOfSupply) {
+      return NextResponse.json(
+        { error: 'Customer or organization state code is required for GST calculation' },
+        { status: 400 }
+      );
+    }
+
+    const isInterState = !!organization.stateCode && organization.stateCode !== effectivePlaceOfSupply;
+    const { subTotal, cgstTotal, sgstTotal, igstTotal, discountTotal, grandTotal, processedItems } =
       computeInvoiceTotals(items, isInterState);
 
     const recurringInvoice = await prisma.$transaction(async (tx) => {
@@ -68,6 +75,7 @@ export async function POST(request: Request) {
           cgstTotal,
           sgstTotal,
           igstTotal,
+          discountTotal,
           total: grandTotal,
           items: { create: processedItems },
         },

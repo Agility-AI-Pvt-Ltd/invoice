@@ -29,18 +29,19 @@ if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 // Export types specifically to avoid Turbopack wildcard export warnings for CJS
 export type { 
+  User,
   Product, 
   Invoice, 
   InvoiceItem, 
   Customer, 
   Organization, 
-  ActivityLog,
-  Prisma
+  ActivityLog
 } from "@prisma/client";
 
 // Export enums explicitly
 export { 
   InvoiceStatus, 
   ProductKind,
-  InventoryMovementType 
+  InventoryMovementType,
+  Prisma
 } from "@prisma/client";

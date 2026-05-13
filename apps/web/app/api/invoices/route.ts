@@ -43,17 +43,17 @@ export async function POST(request: Request) {
 
     if (customerStateCode) {
       const result = stateCodeSchema.safeParse(customerStateCode);
-      if (!result.success) throw ApiErrors.BAD_REQUEST(result.error.errors[0]?.message);
+      if (!result.success) throw ApiErrors.BAD_REQUEST(result.error.issues[0]?.message);
     }
 
     if (customerPhone) {
       const result = indianPhoneSchema.safeParse(customerPhone);
-      if (!result.success) throw ApiErrors.BAD_REQUEST(result.error.errors[0]?.message);
+      if (!result.success) throw ApiErrors.BAD_REQUEST(result.error.issues[0]?.message);
     }
 
     if (placeOfSupply) {
       const result = stateCodeSchema.safeParse(placeOfSupply);
-      if (!result.success) throw ApiErrors.BAD_REQUEST(`Place of Supply: ${result.error.errors[0]?.message}`);
+      if (!result.success) throw ApiErrors.BAD_REQUEST(`Place of Supply: ${result.error.issues[0]?.message}`);
     }
 
     if (new Date(dueDate) < new Date(issueDate)) {
