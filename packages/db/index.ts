@@ -43,5 +43,6 @@ export {
   InvoiceStatus, 
   ProductKind,
   InventoryMovementType,
+  ExpenseLedgerKind,
   Prisma
 } from "@prisma/client";
