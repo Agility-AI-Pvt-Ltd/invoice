@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@repo/db";
+import { Prisma } from "@prisma/client";
 import { getSession } from "@/lib/auth";
 import { applyInventoryOnFullPayment } from "@/lib/domain/inventory";
 import { checkAuthRateLimit } from "@/lib/ratelimit";
@@ -35,7 +36,7 @@ export async function POST(
     if (!orgAccess.hasAccess) {
       return NextResponse.json(
         { error: orgAccess.error.message },
-        { status: orgAccess.error.statusCode }
+        { status: orgAccess.error.status }
       );
     }
 
@@ -69,20 +70,24 @@ export async function POST(
         throw new Error(`INVOICE_${invoice.status}`);
       }
 
-      const alreadyPaid = invoice.payments.reduce((s, p) => s + Number(p.amount), 0);
-      const remaining = Number(invoice.total) - alreadyPaid;
+      const alreadyPaidDec = invoice.payments.reduce(
+        (sum, p) => sum.plus(new Prisma.Decimal(p.amount as any)),
+        new Prisma.Decimal(0)
+      );
+      const remainingDec = new Prisma.Decimal(invoice.total as any).minus(alreadyPaidDec);
+      const amountDec = new Prisma.Decimal(amount);
 
       // Check for overpayment with 0.01 rupee tolerance
-      const TOLERANCE = 0.01;
-      if (amount > remaining + TOLERANCE) {
+      const TOLERANCE = new Prisma.Decimal("0.01");
+      if (amountDec.greaterThan(remainingDec.plus(TOLERANCE))) {
         throw new Error("OVERPAID");
       }
 
-      const totalPaid = alreadyPaid + amount;
+      const totalPaidDec = alreadyPaidDec.plus(amountDec);
       const newStatus =
-        totalPaid >= Number(invoice.total) - 0.01
+        totalPaidDec.greaterThanOrEqualTo(new Prisma.Decimal(invoice.total as any).minus(TOLERANCE))
           ? "PAID"
-          : totalPaid > 0
+          : totalPaidDec.greaterThan(0)
             ? "PARTIALLY_PAID"
             : invoice.status;
 

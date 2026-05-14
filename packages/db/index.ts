@@ -27,4 +27,21 @@ export const prisma = globalForPrisma.prisma ?? createPrismaClient();
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
-export * from "@prisma/client";
+// Export types specifically to avoid Turbopack wildcard export warnings for CJS
+export type { 
+  User,
+  Product, 
+  Invoice, 
+  InvoiceItem, 
+  Customer, 
+  Organization, 
+  ActivityLog
+} from "@prisma/client";
+
+// Export enums explicitly
+export { 
+  InvoiceStatus, 
+  ProductKind,
+  InventoryMovementType,
+  Prisma
+} from "@prisma/client";

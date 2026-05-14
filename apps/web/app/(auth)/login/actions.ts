@@ -6,6 +6,7 @@ import { compare } from "bcryptjs";
 import { redirect } from "next/navigation";
 import { cookies, headers } from "next/headers";
 import { checkAuthRateLimit } from "../../../lib/ratelimit";
+import { logger } from "@/lib/logger";
 
 const loginSchema = z.object({
   email: z.string().email({ message: "Invalid email address" }),
@@ -78,7 +79,8 @@ export async function loginUser(
     if (!user.isOnboarded) {
       redirectPath = "/onboarding";
     }
-  } catch {
+  } catch (error) {
+    logger.error("auth:login", "Unexpected login failure", error, { email });
     return { message: "An error occurred during login. Please try again." };
   }
 

@@ -18,7 +18,7 @@ import {
   Box,
 } from "lucide-react";
 
-type Customer = { id: string; name: string; stateCode: string | null };
+type Customer = { id: string; name: string; stateCode: string | null; address?: string | null };
 type Product = {
   id: string;
   name: string;
@@ -75,6 +75,7 @@ type LineItem = {
   quantity: number;
   unitPrice: number;
   taxRate: number;
+  discount: number;
 };
 
 const TEMPLATES = [
@@ -300,6 +301,10 @@ type ExistingData = {
   customerNameOrId: string;
   placeOfSupply: string;
   notes: string;
+  customerDetails?: string | null;
+  billingAddress?: string | null;
+  shippingAddress?: string | null;
+  shippingName?: string | null;
   items: {
     productId: string | null;
     description: string;
@@ -307,6 +312,7 @@ type ExistingData = {
     quantity: number;
     unitPrice: number;
     taxRate: number;
+    discount: number;
   }[];
 };
 
@@ -355,7 +361,12 @@ export default function InvoiceForm({
   const [manualTaxMode, setManualTaxMode] = useState<"AUTO" | "INTRA" | "INTER">("AUTO");
   const [customerEmail, setCustomerEmail] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
-  const [customerDetails, setCustomerDetails] = useState("");
+  const [customerDetails, setCustomerDetails] = useState(existingData?.customerDetails ?? "");
+
+  const [billingAddress, setBillingAddress] = useState(existingData?.billingAddress ?? "");
+  const [shippingAddress, setShippingAddress] = useState(existingData?.shippingAddress ?? "");
+  const [shippingName, setShippingName] = useState(existingData?.shippingName ?? "");
+  const [sameAsBilling, setSameAsBilling] = useState(editMode ? (!existingData?.shippingAddress || existingData.shippingAddress === existingData.billingAddress) : true);
 
   const [items, setItems] = useState<LineItem[]>(
     existingData?.items.map((item, i) => ({
@@ -363,9 +374,10 @@ export default function InvoiceForm({
       productId: item.productId ?? null,
       description: item.description,
       hsnCode: item.hsnCode,
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      taxRate: item.taxRate,
+      quantity: Number(item.quantity),
+      unitPrice: Number(item.unitPrice),
+      taxRate: Number(item.taxRate),
+      discount: Number(item.discount || 0),
     })) ?? [
       {
         id: "1",
@@ -375,6 +387,7 @@ export default function InvoiceForm({
         quantity: 0,
         unitPrice: 0,
         taxRate: 18,
+        discount: 0,
       },
     ],
   );
@@ -399,18 +412,23 @@ export default function InvoiceForm({
     let subTotal = 0,
       cgst = 0,
       sgst = 0,
-      igst = 0;
+      igst = 0,
+      discountTotal = 0;
     items.forEach((item) => {
-      const base = item.quantity * item.unitPrice;
-      const tax = (base * item.taxRate) / 100;
-      subTotal += base;
+      const lineTotal = item.quantity * item.unitPrice;
+      const taxableAmount = lineTotal - (item.discount || 0);
+      const tax = (taxableAmount * item.taxRate) / 100;
+      
+      subTotal += lineTotal;
+      discountTotal += (item.discount || 0);
+      
       if (isInterState) igst += tax;
       else {
         cgst += tax / 2;
         sgst += tax / 2;
       }
     });
-    return { subTotal, cgst, sgst, igst, total: subTotal + cgst + sgst + igst };
+    return { subTotal, cgst, sgst, igst, discountTotal, total: subTotal - discountTotal + cgst + sgst + igst };
   }, [items, isInterState]);
 
   const addItem = () =>
@@ -424,6 +442,7 @@ export default function InvoiceForm({
         quantity: 0,
         unitPrice: 0,
         taxRate: 18,
+        discount: 0,
       },
     ]);
 
@@ -466,9 +485,13 @@ export default function InvoiceForm({
           customerEmail,
           customerPhone,
           customerDetails,
+          billingAddress,
+          shippingAddress: sameAsBilling ? billingAddress : shippingAddress,
+          shippingName: sameAsBilling ? customerInput : shippingName,
           template: selectedTemplate,
           placeOfSupply: effectiveStateCode,
           isInterState,
+          discountTotal: totals.discountTotal,
           items: items.map((i) => ({
             productId: i.productId ?? undefined,
             description: i.description,
@@ -476,20 +499,23 @@ export default function InvoiceForm({
             quantity: Number(i.quantity),
             unitPrice: Number(i.unitPrice),
             taxRate: Number(i.taxRate),
+            discount: Number(i.discount || 0),
           })),
         }),
       });
       if (!res.ok) {
         const data = await res.json();
+        const errorMsg =
+          data?.error?.message ||
+          data?.error ||
+          (editMode ? "Failed to update invoice" : "Failed to create invoice");
         throw new Error(
-          data.error ||
-            (editMode
-              ? "Failed to update invoice"
-              : "Failed to create invoice"),
+          typeof errorMsg === "string" ? errorMsg : JSON.stringify(errorMsg)
         );
       }
       const saved = await res.json();
-      router.push(`/dashboard/invoices/${saved.id}`);
+      const invoiceId = saved?.data?.id || saved?.id;
+      router.push(`/dashboard/invoices/${invoiceId}`);
       router.refresh();
     } catch (err: any) {
       setError(err.message);
@@ -499,6 +525,16 @@ export default function InvoiceForm({
 
   const inputCls =
     "w-full border border-border bg-background rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all placeholder:text-muted-foreground/50";
+
+  // Sync address when customer selected
+  useMemo(() => {
+    if (selectedCustomer && !editMode) {
+      const addr = (selectedCustomer as any).address || "";
+      if (addr && !billingAddress) {
+        setBillingAddress(addr);
+      }
+    }
+  }, [selectedCustomer, editMode]);
 
   return (
     <>
@@ -760,6 +796,77 @@ export default function InvoiceForm({
                 </div>
               )}
             </div>
+            
+            {/* Address Details */}
+            <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-6">
+              <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                <Box className="w-4 h-4" />
+                Address Details
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* Billing Address */}
+                <div className="space-y-4">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">
+                    Billing Address
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={billingAddress}
+                    onChange={(e) => setBillingAddress(e.target.value)}
+                    placeholder="Enter customer's billing address..."
+                    className={`${inputCls} resize-none min-h-[120px]`}
+                  />
+                </div>
+
+                {/* Shipping Address */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">
+                      Shipping Address
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="sameAsBilling"
+                        checked={sameAsBilling}
+                        onChange={(e) => setSameAsBilling(e.target.checked)}
+                        className="w-3 h-3 rounded border-border text-primary focus:ring-primary/20 cursor-pointer"
+                      />
+                      <label htmlFor="sameAsBilling" className="text-[10px] font-bold text-muted-foreground cursor-pointer">
+                        Same as Billing
+                      </label>
+                    </div>
+                  </div>
+
+                  {!sameAsBilling ? (
+                    <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                      <input
+                        value={shippingName}
+                        onChange={(e) => setShippingName(e.target.value)}
+                        placeholder="Recipient Name (if different)"
+                        className={inputCls}
+                      />
+                      <textarea
+                        rows={4}
+                        value={shippingAddress}
+                        onChange={(e) => setShippingAddress(e.target.value)}
+                        placeholder="Enter shipping destination..."
+                        className={`${inputCls} resize-none min-h-[85px]`}
+                      />
+                    </div>
+                  ) : (
+                    <div className="h-[120px] rounded-xl border border-dashed border-border bg-secondary/20 flex flex-col items-center justify-center text-center p-4">
+                      <CheckCircle2 className="w-5 h-5 text-primary/40 mb-2" />
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-tight">
+                        Shipping to Billing Address
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
 
             {/* Line Items */}
             <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
@@ -769,17 +876,6 @@ export default function InvoiceForm({
                   Line Items
                 </h3>
               </div>
-
-              {/* <div className="px-6 py-3 border-b border-border bg-secondary/10 hidden md:grid grid-cols-12 gap-4">
-                 <div className="col-span-6 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Description</div>
-                 <div className="col-span-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">HSN/SAC</div>
-                 <div className="col-span-1 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Qty</div>
-                 <div className="col-span-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
-                   Rate (₹)
-                   <span className="text-[8px] opacity-40 lowercase font-medium tracking-normal">(Editable)</span>
-                 </div>
-                 <div className="col-span-1 text-[10px] font-bold text-muted-foreground uppercase tracking-widest text-right">Total</div>
-               </div> */}
 
               <datalist id="product-list">
                 {products.map((p) => (
@@ -905,6 +1001,26 @@ export default function InvoiceForm({
                         </div>
                         <div className="w-[100px]">
                           <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1 block">
+                            Disc (₹)
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={item.discount === 0 ? "" : item.discount}
+                            onChange={(e) =>
+                              updateItem(
+                                item.id,
+                                "discount",
+                                Number(e.target.value) || 0,
+                              )
+                            }
+                            className={inputCls}
+                          />
+                        </div>
+                        <div className="w-[100px]">
+                          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1 block">
                             GST %
                           </label>
                           <select
@@ -966,18 +1082,19 @@ export default function InvoiceForm({
                             min="0"
                             step="0.01"
                             placeholder="0.00"
-                            key={`total-${item.id}-${item.unitPrice}-${item.quantity}-${item.taxRate}`}
+                            key={`total-${item.id}-${item.unitPrice}-${item.quantity}-${item.taxRate}-${item.discount}`}
                             defaultValue={(
-                              (item.quantity || 0) *
-                              (item.unitPrice || 0) *
+                              ((item.quantity || 0) * (item.unitPrice || 0) - (item.discount || 0)) *
                               (1 + (item.taxRate || 0) / 100)
                             ).toFixed(2)}
                             onBlur={(e) => {
                               const totalInclTax = Number(e.target.value) || 0;
                               const qty = item.quantity || 1;
                               const taxRate = item.taxRate || 0;
-                              const newUnitPrice = totalInclTax / (qty * (1 + taxRate / 100));
-                              updateItem(item.id, "unitPrice", newUnitPrice);
+                              const unitPrice = item.unitPrice || 0;
+                              
+                              const newDiscount = (qty * unitPrice) - (totalInclTax / (1 + taxRate / 100));
+                              updateItem(item.id, "discount", Number(Math.max(0, newDiscount).toFixed(2)));
                             }}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
@@ -1022,6 +1139,18 @@ export default function InvoiceForm({
                     ₹{totals.subTotal.toLocaleString("en-IN")}
                   </span>
                 </div>
+
+                {totals.discountTotal > 0 && (
+                  <div className="flex justify-between text-sm text-green-600 font-medium">
+                    <span className="flex items-center gap-1.5">
+                      <TrendingUp className="w-3.5 h-3.5 rotate-180" />
+                      Total Discount
+                    </span>
+                    <span>
+                      -₹{totals.discountTotal.toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                )}
 
                 {isInterState ? (
                   <div className="flex justify-between text-sm">

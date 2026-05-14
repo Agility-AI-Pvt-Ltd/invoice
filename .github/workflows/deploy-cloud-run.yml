@@ -40,6 +40,9 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    env:
+      HAS_WIF: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && secrets.GCP_SERVICE_ACCOUNT != '' }}
+      HAS_JSON: ${{ secrets.GCP_SA_KEY != '' }}
 
     steps:
       - uses: actions/checkout@v4

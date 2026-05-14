@@ -1,37 +1,19 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@repo/db';
 import type { User, Organization } from '@repo/db';
+import { AppError, ApiErrors, handleApiError } from './errors';
+export { AppError, ApiErrors, handleApiError };
+import { logger } from './logger';
 
-export class ApiError extends Error {
-  constructor(
-    public statusCode: number,
-    message: string,
-    public logDetails?: Record<string, unknown>
-  ) {
-    super(message);
-    this.name = 'ApiError';
-  }
-}
+import { UserWithOrgs } from './auth';
 
-// Common error codes
-export const ApiErrors = {
-  UNAUTHORIZED: () => new ApiError(401, 'Unauthorized'),
-  FORBIDDEN: () => new ApiError(403, 'Forbidden'),
-  NOT_FOUND: () => new ApiError(404, 'Not found'),
-  BAD_REQUEST: (msg: string) => new ApiError(400, msg),
-  CONFLICT: (msg: string) => new ApiError(409, msg),
-  TOO_MANY_REQUESTS: (retryAfter?: number) =>
-    new ApiError(429, `Too many requests${retryAfter ? `. Try again in ${retryAfter}s` : ''}`, {
-      retryAfter,
-    }),
-  INTERNAL_ERROR: () => new ApiError(500, 'Internal server error'),
-};
-
-// Helper to verify org access
+/**
+ * Helper to verify organization access for a given user.
+ */
 export function verifyOrgAccess(
-  user: any,
+  user: UserWithOrgs | null | undefined,
   organizationId: string | undefined
-): { hasAccess: true; org: Organization } | { hasAccess: false; error: ApiError } {
+): { hasAccess: true; org: UserWithOrgs['ownedOrgs'][number] } | { hasAccess: false; error: AppError } {
   if (!user) {
     return { hasAccess: false, error: ApiErrors.UNAUTHORIZED() };
   }
@@ -40,83 +22,82 @@ export function verifyOrgAccess(
     return { hasAccess: false, error: ApiErrors.BAD_REQUEST('Organization ID required') };
   }
 
-  const hasAccess = user.ownedOrgs?.some((org: any) => org.id === organizationId);
-  if (!hasAccess) {
+  const org = user.ownedOrgs?.find((o) => o.id === organizationId);
+  if (!org) {
     return { hasAccess: false, error: ApiErrors.FORBIDDEN() };
   }
 
-  const org = user.ownedOrgs.find((org: any) => org.id === organizationId);
   return { hasAccess: true, org };
 }
 
-// Safe error response handler
-export function createErrorResponse(error: unknown, context: string) {
-  const actualError = error instanceof Error ? error : new Error(String(error));
-
-  // Log the full error with context
-  console.error(`[${context}]`, {
-    message: actualError.message,
-    stack: actualError.stack,
-    timestamp: new Date().toISOString(),
-  });
-
-  if (error instanceof ApiError) {
-    return NextResponse.json(
-      { error: error.message },
-      { status: error.statusCode }
-    );
-  }
-
-  // Handle Prisma errors
-  if ((actualError as any).code === 'P2002') {
-    const field = (actualError as any).meta?.target?.[0] || 'field';
-    return NextResponse.json(
-      { error: `${field} already exists` },
-      { status: 409 }
-    );
-  }
-
-  if ((actualError as any).code === 'P2025') {
-    return NextResponse.json({ error: 'Record not found' }, { status: 404 });
-  }
-
-  // Generic error - don't expose details
-  return NextResponse.json(
-    { error: 'An error occurred while processing your request' },
-    { status: 500 }
-  );
-}
-
-// Type-safe response wrapper
+/**
+ * Standardized API response structure.
+ */
 export interface ApiResponse<T> {
   success: boolean;
   data?: T;
-  error?: string;
-  meta?: Record<string, unknown>;
+  error?: {
+    code: string;
+    message: string;
+    details?: any;
+  };
+  meta?: {
+    timestamp: string;
+    requestId?: string;
+    [key: string]: any;
+  };
 }
 
+/**
+ * Creates a standardized success response.
+ */
 export function successResponse<T>(data: T, meta?: Record<string, unknown>): ApiResponse<T> {
-  return { success: true, data, meta };
+  return {
+    success: true,
+    data,
+    meta: {
+      timestamp: new Date().toISOString(),
+      ...meta,
+    },
+  };
 }
 
-export function errorResponse(error: string): ApiResponse<null> {
-  return { success: false, error };
+/**
+ * Creates a standardized error response (for non-NextResponse use cases).
+ */
+export function errorResponse(error: string, code: string = 'BAD_REQUEST'): ApiResponse<null> {
+  return {
+    success: false,
+    error: {
+      code,
+      message: error,
+    },
+    meta: {
+      timestamp: new Date().toISOString(),
+    },
+  };
 }
 
-// Helper to check if user owns organization
+/**
+ * Helper to check if user owns an organization.
+ */
 export async function requireOrgOwnership(
-  user: any,
+  user: UserWithOrgs | null | undefined,
   organizationId: string
-): Promise<{ valid: true; org: Organization } | { valid: false; error: ApiError }> {
-  const org = user?.ownedOrgs?.find((org: any) => org.id === organizationId);
-  if (!org) {
-    return { valid: false, error: ApiErrors.FORBIDDEN() };
+): Promise<{ valid: true; org: UserWithOrgs['ownedOrgs'][number] } | { valid: false; error: AppError }> {
+  const result = verifyOrgAccess(user, organizationId);
+  if (!result.hasAccess) {
+    return { valid: false, error: result.error };
   }
-  return { valid: true, org };
+  return { valid: true, org: result.org };
 }
 
-// Helper to log API action to audit trail
+/**
+ * Logs an API action to the audit trail.
+ * Note: Should ideally be called within a transaction for atomicity.
+ */
 export async function logApiAction(
+  tx: any, // Accepts Prisma transaction or client
   organizationId: string,
   entity: string,
   entityId: string,
@@ -124,17 +105,20 @@ export async function logApiAction(
   meta?: Record<string, unknown>
 ) {
   try {
-    await prisma.activityLog.create({
+    await tx.activityLog.create({
       data: {
         organizationId,
         entity,
         entityId,
         action,
-        meta: (meta as any) || {},
+        meta: meta || {},
       },
     });
   } catch (err) {
-    console.warn('[audit-log] Failed to create activity log:', err);
-    // Don't throw - audit logging should never block main operation
+    logger.warn('audit-log', `Failed to create activity log for ${entity}:${entityId}`, err, { organizationId, action });
+    // In some cases we don't want to block, but logging is now structured
   }
 }
+
+// Deprecated in favor of lib/errors.ts:handleApiError
+export const createErrorResponse = handleApiError;

@@ -1,3 +1,6 @@
+import { Decimal } from 'decimal.js';
+import { invoiceItemSchema } from "@repo/domain";
+
 export interface GSTResult {
   cgst: number;
   sgst: number;
@@ -13,6 +16,7 @@ export interface ProcessedItem {
   cgstAmount: number;
   sgstAmount: number;
   igstAmount: number;
+  discount: number;
   total: number;
   /** Optional catalog link; validated server-side against the organization. */
   productId?: string | null;
@@ -23,14 +27,24 @@ export interface InvoiceTotals {
   cgstTotal: number;
   sgstTotal: number;
   igstTotal: number;
+  discountTotal: number;
   grandTotal: number;
   processedItems: ProcessedItem[];
 }
 
-export function calculateGST(amount: number, taxRate: number, isInterState: boolean): GSTResult {
-  const totalTax = (amount * taxRate) / 100;
-  if (isInterState) return { cgst: 0, sgst: 0, igst: totalTax };
-  return { cgst: totalTax / 2, sgst: totalTax / 2, igst: 0 };
+/**
+ * Calculates GST components with high precision.
+ */
+export function calculateGST(amount: Decimal, taxRate: number, isInterState: boolean): { cgst: Decimal; sgst: Decimal; igst: Decimal } {
+  const tr = new Decimal(taxRate);
+  const totalTax = amount.times(tr).dividedBy(100);
+
+  if (isInterState) {
+    return { cgst: new Decimal(0), sgst: new Decimal(0), igst: totalTax };
+  }
+  
+  const splitTax = totalTax.dividedBy(2);
+  return { cgst: splitTax, sgst: splitTax, igst: new Decimal(0) };
 }
 
 type LineInput = {
@@ -39,58 +53,76 @@ type LineInput = {
   quantity: unknown;
   unitPrice: unknown;
   taxRate?: unknown;
+  discount?: unknown;
   productId?: string | null;
 };
 
+/**
+ * Computes all invoice totals using Decimal.js for financial accuracy.
+ * Handles item-level discounts and multi-state tax logic.
+ */
 export function computeInvoiceTotals(items: LineInput[], isInterState: boolean): InvoiceTotals {
-  let subTotal = 0, cgstTotal = 0, sgstTotal = 0, igstTotal = 0;
+  let subTotal = new Decimal(0);
+  let cgstTotal = new Decimal(0);
+  let sgstTotal = new Decimal(0);
+  let igstTotal = new Decimal(0);
+  let discountTotal = new Decimal(0);
 
   const processedItems: ProcessedItem[] = items.map((item) => {
-    const qty = Number(item.quantity) || 0;
-    const price = Number(item.unitPrice) || 0;
+    const qty = new Decimal(Number(item.quantity) || 0);
+    const price = new Decimal(Number(item.unitPrice) || 0);
     const taxRate = Number(item.taxRate) || 0;
-    const itemSub = qty * price;
-    const taxes = calculateGST(itemSub, taxRate, isInterState);
+    const disc = new Decimal(Number(item.discount) || 0);
+    
+    const itemSub = qty.times(price);
+    const taxableAmount = itemSub.minus(disc);
+    const taxes = calculateGST(taxableAmount, taxRate, isInterState);
 
-    subTotal += itemSub;
-    cgstTotal += taxes.cgst;
-    sgstTotal += taxes.sgst;
-    igstTotal += taxes.igst;
+    subTotal = subTotal.plus(itemSub);
+    discountTotal = discountTotal.plus(disc);
+    cgstTotal = cgstTotal.plus(taxes.cgst);
+    sgstTotal = sgstTotal.plus(taxes.sgst);
+    igstTotal = igstTotal.plus(taxes.igst);
+
+    const itemTotal = taxableAmount.plus(taxes.cgst).plus(taxes.sgst).plus(taxes.igst);
 
     return {
       description: item.description,
       hsnCode: (item.hsnCode as string) || null,
-      quantity: qty,
-      unitPrice: price,
+      quantity: qty.toNumber(),
+      unitPrice: price.toNumber(),
       taxRate,
-      cgstAmount: taxes.cgst,
-      sgstAmount: taxes.sgst,
-      igstAmount: taxes.igst,
-      total: itemSub + taxes.cgst + taxes.sgst + taxes.igst,
+      cgstAmount: taxes.cgst.toNumber(),
+      sgstAmount: taxes.sgst.toNumber(),
+      igstAmount: taxes.igst.toNumber(),
+      discount: disc.toNumber(),
+      total: itemTotal.toNumber(),
       productId: item.productId ?? null,
     };
   });
 
+  const grandTotal = subTotal.minus(discountTotal).plus(cgstTotal).plus(sgstTotal).plus(igstTotal);
+
   return {
-    subTotal,
-    cgstTotal,
-    sgstTotal,
-    igstTotal,
-    grandTotal: subTotal + cgstTotal + sgstTotal + igstTotal,
+    subTotal: subTotal.toNumber(),
+    cgstTotal: cgstTotal.toNumber(),
+    sgstTotal: sgstTotal.toNumber(),
+    igstTotal: igstTotal.toNumber(),
+    discountTotal: discountTotal.toNumber(),
+    grandTotal: grandTotal.toNumber(),
     processedItems,
   };
 }
 
 export function validateItems(items: unknown[]): string | null {
+  if (!Array.isArray(items)) return "Items must be an array";
+  
   for (let i = 0; i < items.length; i++) {
-    const item = items[i] as any;
-    const qty = Number(item.quantity);
-    const price = Number(item.unitPrice);
-    const taxRate = Number(item.taxRate ?? 0);
-    if (!item.description?.trim()) return `Item ${i + 1}: description is required`;
-    if (!qty || qty <= 0) return `Item ${i + 1}: quantity must be greater than 0`;
-    if (price < 0) return `Item ${i + 1}: unit price cannot be negative`;
-    if (taxRate < 0 || taxRate > 100) return `Item ${i + 1}: tax rate must be between 0 and 100`;
+    const result = invoiceItemSchema.safeParse(items[i]);
+    if (!result.success) {
+      const error = result.error.issues[0];
+      return `Item ${i + 1}: ${error?.message || "Invalid item data"}`;
+    }
   }
   return null;
 }
