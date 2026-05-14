@@ -10,11 +10,6 @@ import {
   type MotionValue,
 } from "framer-motion";
 
-/* ─── fonts ─────────────────────────────────────────────────────── */
-const Fonts = () => (
-  <style>{`@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=DM+Sans:wght@300;400;500;600&display=swap');`}</style>
-);
-
 /* ─── typing text ────────────────────────────────────────────────── */
 const TEXT =
   "Invoice  #INV-2024-001\n" +
@@ -427,7 +422,7 @@ function InvCard({
           boxShadow:
             "0 16px 48px rgba(0,0,0,0.09), 0 3px 10px rgba(0,0,0,0.05)",
           border: "1px solid rgba(0,0,0,0.07)",
-          fontFamily: "'DM Sans', sans-serif",
+          fontFamily: "var(--font-marketing-body), sans-serif",
         }}
       >
         <div
@@ -500,7 +495,7 @@ function InvCard({
               fontSize: 13,
               fontWeight: 800,
               color: "#4f35d2",
-              fontFamily: "'Bricolage Grotesque', sans-serif",
+              fontFamily: "var(--font-marketing-display), sans-serif",
             }}
           >
             {inv.total}
@@ -733,7 +728,7 @@ function StackFullPanel({ p }: { p: MotionValue<number> }) {
                   boxShadow:
                     "0 20px 60px rgba(0,0,0,0.10), 0 4px 12px rgba(0,0,0,0.06)",
                   border: "1px solid rgba(0,0,0,0.07)",
-                  fontFamily: "'DM Sans', sans-serif",
+                  fontFamily: "var(--font-marketing-body), sans-serif",
                   transformOrigin: "bottom center",
                 }}
               >
@@ -821,7 +816,7 @@ function StackFullPanel({ p }: { p: MotionValue<number> }) {
                       fontSize: 15,
                       fontWeight: 800,
                       color: "#4f35d2",
-                      fontFamily: "'Bricolage Grotesque', sans-serif",
+                      fontFamily: "var(--font-marketing-display), sans-serif",
                     }}
                   >
                     {inv.total}
@@ -862,7 +857,7 @@ function StackFullPanel({ p }: { p: MotionValue<number> }) {
           />
           <span
             style={{
-              fontFamily: "'DM Sans', sans-serif",
+              fontFamily: "var(--font-marketing-body), sans-serif",
               fontSize: 13,
               fontWeight: 600,
               color: "#1a1340",
@@ -908,7 +903,7 @@ function StackFullPanel({ p }: { p: MotionValue<number> }) {
           />
           <span
             style={{
-              fontFamily: "'DM Sans', sans-serif",
+              fontFamily: "var(--font-marketing-body), sans-serif",
               fontSize: 12,
               fontWeight: 600,
               color: "#4f35d2",
@@ -922,7 +917,7 @@ function StackFullPanel({ p }: { p: MotionValue<number> }) {
         {/* Heading */}
         <h2
           style={{
-            fontFamily: "'Bricolage Grotesque', sans-serif",
+            fontFamily: "var(--font-marketing-display), sans-serif",
             fontSize: "clamp(2.6rem, 4.5vw, 4rem)",
             fontWeight: 800,
             color: "#1a1340",
@@ -947,7 +942,7 @@ function StackFullPanel({ p }: { p: MotionValue<number> }) {
         {/* Body */}
         <p
           style={{
-            fontFamily: "'DM Sans', sans-serif",
+            fontFamily: "var(--font-marketing-body), sans-serif",
             fontSize: "clamp(1rem, 1.4vw, 1.2rem)",
             color: "#8b87aa",
             lineHeight: 1.65,
@@ -1093,7 +1088,7 @@ function StackFullPanel({ p }: { p: MotionValue<number> }) {
               <div>
                 <div
                   style={{
-                    fontFamily: "'DM Sans', sans-serif",
+                    fontFamily: "var(--font-marketing-body), sans-serif",
                     fontSize: 14,
                     fontWeight: 700,
                     color: "#1a1340",
@@ -1104,7 +1099,7 @@ function StackFullPanel({ p }: { p: MotionValue<number> }) {
                 </div>
                 <div
                   style={{
-                    fontFamily: "'DM Sans', sans-serif",
+                    fontFamily: "var(--font-marketing-body), sans-serif",
                     fontSize: 13,
                     color: "#8b87aa",
                     fontWeight: 400,
@@ -1127,7 +1122,7 @@ function StackFullPanel({ p }: { p: MotionValue<number> }) {
                 border: "none",
                 padding: "14px 32px",
                 borderRadius: 100,
-                fontFamily: "'DM Sans', sans-serif",
+                fontFamily: "var(--font-marketing-body), sans-serif",
                 fontSize: "0.95rem",
                 fontWeight: 600,
                 cursor: "pointer",
@@ -1198,7 +1193,6 @@ export default function TypewriterSection() {
       ref={ref}
       style={{ height: "550vh", position: "relative", pointerEvents: "none" }}
     >
-      <Fonts />
       <motion.div
         style={{
           position: "sticky",
@@ -1276,7 +1270,7 @@ export default function TypewriterSection() {
             />
             <span
               style={{
-                fontFamily: "'Bricolage Grotesque', sans-serif",
+                fontFamily: "var(--font-marketing-display), sans-serif",
                 fontSize: 16,
                 fontWeight: 700,
                 color: "#1a1340",
@@ -1318,7 +1312,7 @@ export default function TypewriterSection() {
           >
             <h1
               style={{
-                fontFamily: "'Bricolage Grotesque', sans-serif",
+                fontFamily: "var(--font-marketing-display), sans-serif",
                 fontSize: "clamp(2.8rem, 5.5vw, 4.5rem)",
                 fontWeight: 800,
                 color: "#1a1340",
@@ -1339,7 +1333,7 @@ export default function TypewriterSection() {
             </h1>
             <p
               style={{
-                fontFamily: "'DM Sans', sans-serif",
+                fontFamily: "var(--font-marketing-body), sans-serif",
                 fontSize: "1rem",
                 color: "#8b87aa",
                 margin: "0 auto",
@@ -1368,7 +1362,7 @@ export default function TypewriterSection() {
           >
             <p
               style={{
-                fontFamily: "'Bricolage Grotesque', sans-serif",
+                fontFamily: "var(--font-marketing-display), sans-serif",
                 fontSize: "clamp(1.75rem, 3.8vw, 2.95rem)",
                 fontWeight: 800,
                 color: "#1a1340",
@@ -1408,7 +1402,7 @@ export default function TypewriterSection() {
           >
             <p
               style={{
-                fontFamily: "'Bricolage Grotesque', sans-serif",
+                fontFamily: "var(--font-marketing-display), sans-serif",
                 fontSize: "clamp(1.75rem, 3.8vw, 2.95rem)",
                 fontWeight: 800,
                 color: "#1a1340",
@@ -1448,7 +1442,7 @@ export default function TypewriterSection() {
           >
             <p
               style={{
-                fontFamily: "'Bricolage Grotesque', sans-serif",
+                fontFamily: "var(--font-marketing-display), sans-serif",
                 fontSize: "clamp(1.75rem, 3.8vw, 2.95rem)",
                 fontWeight: 800,
                 color: "#1a1340",
@@ -1477,7 +1471,7 @@ export default function TypewriterSection() {
           <div style={{ visibility: "hidden", pointerEvents: "none" }}>
             <h1
               style={{
-                fontFamily: "'Bricolage Grotesque', sans-serif",
+                fontFamily: "var(--font-marketing-display), sans-serif",
                 fontSize: "clamp(2.8rem, 5.5vw, 4.5rem)",
                 fontWeight: 800,
                 lineHeight: 1.05,
@@ -1545,7 +1539,7 @@ export default function TypewriterSection() {
             flexDirection: "column",
             alignItems: "center",
             gap: 6,
-            fontFamily: "'DM Sans', sans-serif",
+            fontFamily: "var(--font-marketing-body), sans-serif",
             fontSize: 11,
             color: "#8b87aa",
             letterSpacing: "0.1em",

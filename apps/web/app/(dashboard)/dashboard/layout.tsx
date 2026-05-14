@@ -13,6 +13,7 @@ import {
   Warehouse,
   BarChart2,
   ChevronRight,
+  Wallet2,
 } from "lucide-react";
 import { ThemeToggle } from "../../../components/theme-toggle";
 import { LogoutButton } from "./logout-button";
@@ -24,6 +25,7 @@ const navItems = [
   { href: "/dashboard/customers", icon: Users, label: "Customers" },
   { href: "/dashboard/products", icon: Box, label: "Products" },
   { href: "/dashboard/inventory", icon: Warehouse, label: "Inventory" },
+  { href: "/dashboard/expenses", icon: Wallet2, label: "Business expenses" },
   { href: "/dashboard/reports", icon: BarChart2, label: "Reports & GST" },
   { href: "/dashboard/settings", icon: Settings, label: "Settings" },
 ];

@@ -1,5 +1,4 @@
 import HeroSection from "@repo/ui/Hero";
-import HowItWorks from "@repo/ui/HowItWorks";
 import TypewriterSection from "@repo/ui/TypewriterSection";
 
 export default async function Home() {

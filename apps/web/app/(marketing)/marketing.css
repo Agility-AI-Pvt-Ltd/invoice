@@ -1,0 +1,5 @@
+.marketing-root {
+  position: relative;
+  min-height: 0;
+  font-family: var(--font-marketing-body), sans-serif;
+}

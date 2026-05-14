@@ -1,14 +1,25 @@
 # Requires one-time GCP setup: Artifact Registry repo, Cloud Run service, and either
 # Workload Identity Federation (recommended) or a JSON service account key.
 #
-# GitHub repo secrets (Workload Identity Federation):
-#   GCP_WORKLOAD_IDENTITY_PROVIDER  e.g. projects/123/locations/global/.../providers/github
-#   GCP_SERVICE_ACCOUNT             e.g. gh-actions-deploy@PROJECT_ID.iam.gserviceaccount.com
-#   NEXT_PUBLIC_APP_URL             Public site URL, e.g. https://invoice-web-xxxx.a.run.app
+# GitHub repository secrets
+# -------------------------
+# GCP (pick ONE auth method):
+#   WIF_PROVIDER                    Full workload identity provider resource name, e.g.
+#                                   projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+#   WIF_SERVICE_ACCOUNT             Impersonated SA, e.g. github-actions-sa@invoicely-web.iam.gserviceaccount.com
+#   OR
+#   GCP_SA_KEY                      Service account JSON (single-line or base64 — use WIF if possible)
 #
-# Alternative: replace the auth step with credentials_json: ${{ secrets.GCP_SA_KEY }}
+# Build / app:
+#   NEXT_PUBLIC_APP_URL             Public site URL, e.g. https://invoicely-web-app-xxxxx.asia-south1.run.app
 #
-# Cloud Run: set DATABASE_URL (Neon pooled URL) via Console or Secret Manager — not stored in GitHub.
+# Database (Neon):
+#   DATABASE_URL                    Used ONLY in this workflow for `prisma migrate deploy`.
+#                                   Prefer Neon's *direct* (non-pooled) connection string for migrations;
+#                                   pooled URLs often work but Neon recommends direct for schema changes.
+#
+# Cloud Run runtime: configure DATABASE_URL for the running container (Secret Manager or env var in Console).
+#   That value is separate from GitHub — the app needs DB access at runtime; CI needs it to migrate before deploy.
 
 name: Deploy to Cloud Run
 
@@ -17,11 +28,11 @@ on:
     branches: [main]
 
 env:
-  PROJECT_ID: sunlit-arcade-496210-n7
+  PROJECT_ID: invoicely-web
   REGION: asia-south1
-  AR_REPOSITORY: invoice-repo
-  SERVICE: invoice-web
-  IMAGE_NAME: invoice-web
+  REPO: invoicely-repo
+  SERVICE: invoicely-web-app
+  IMAGE: asia-south1-docker.pkg.dev/invoicely-web/invoicely-repo/web
 
 jobs:
   deploy:
@@ -36,23 +47,60 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate GCP auth inputs
+      - name: Validate required secrets
         shell: bash
         run: |
-          if [[ "${{ env.HAS_WIF }}" == "false" && "${{ env.HAS_JSON }}" == "false" ]]; then
+          has_wif=false
+          has_json=false
+          if [[ -n "${{ secrets.WIF_PROVIDER }}" && -n "${{ secrets.WIF_SERVICE_ACCOUNT }}" ]]; then
+            has_wif=true
+          fi
+          if [[ -n "${{ secrets.GCP_SA_KEY }}" ]]; then
+            has_json=true
+          fi
+
+          if [[ "$has_wif" == true && "$has_json" == true ]]; then
+            echo "Provide either WIF secrets (WIF_PROVIDER + WIF_SERVICE_ACCOUNT) or GCP_SA_KEY, not both."
+            exit 1
+          fi
+          if [[ "$has_wif" == false && "$has_json" == false ]]; then
             echo "Missing GCP auth secrets. Configure WIF secrets or GCP_SA_KEY."
+            echo "Note: secrets are not available to workflows from forks/Dependabot by default."
             exit 1
           fi
 
+          if [[ -z "${{ secrets.DATABASE_URL }}" ]]; then
+            echo "Missing DATABASE_URL secret (Neon connection string) — required for prisma migrate deploy."
+            exit 1
+          fi
+
+          if [[ -z "${{ secrets.NEXT_PUBLIC_APP_URL }}" ]]; then
+            echo "Warning: NEXT_PUBLIC_APP_URL is empty; client-side absolute URLs may be wrong. Set the secret to your public Cloud Run URL."
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Apply database migrations (Prisma → Neon)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        working-directory: packages/db
+        run: npx prisma migrate deploy
+
       - id: auth-wif
-        if: env.HAS_WIF == 'true'
+        if: ${{ secrets.WIF_PROVIDER != '' && secrets.WIF_SERVICE_ACCOUNT != '' }}
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
       - id: auth-json
-        if: env.HAS_WIF == 'false' && env.HAS_JSON == 'true'
+        if: ${{ secrets.WIF_PROVIDER == '' && secrets.WIF_SERVICE_ACCOUNT == '' && secrets.GCP_SA_KEY != '' }}
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
@@ -64,7 +112,7 @@ jobs:
 
       - name: Build and push image
         run: |
-          IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.AR_REPOSITORY }}/${{ env.IMAGE_NAME }}"
+          IMAGE="${{ env.IMAGE }}"
           docker build \
             --build-arg NEXT_PUBLIC_APP_URL="${{ secrets.NEXT_PUBLIC_APP_URL }}" \
             -t "${IMAGE}:${{ github.sha }}" \
@@ -76,7 +124,9 @@ jobs:
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy ${{ env.SERVICE }} \
-            --image "${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.AR_REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}" \
+            --image "${{ env.IMAGE }}:${{ github.sha }}" \
             --region ${{ env.REGION }} \
             --platform managed \
-            --project ${{ env.PROJECT_ID }}
+            --project ${{ env.PROJECT_ID }} \
+            --allow-unauthenticated \
+            --port 8080
