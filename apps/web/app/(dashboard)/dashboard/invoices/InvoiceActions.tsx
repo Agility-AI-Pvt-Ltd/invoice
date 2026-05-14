@@ -132,17 +132,10 @@ export function InvoiceActions({
 
   const isEditable = invoiceStatus === "DRAFT" || invoiceStatus === "SENT";
 
-<<<<<<< HEAD
   const cancelModal =
     showCancelModal &&
     createPortal(
-      <div className="fixed inset-0 z-[99999] flex items-center justify-center animate-in">
-=======
-  return (
-    <>
-      {showCancelModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center animate-in fade-in duration-200">
->>>>>>> ce7ff6bf18702bf9610533f56cda5fbc27f67473
+      <div className="fixed inset-0 z-[99999] flex items-center justify-center animate-in fade-in duration-200">
           <div
             className="absolute inset-0 bg-background/80 backdrop-blur-sm"
             onClick={() => !isCancelling && closeCancelModal()}
@@ -210,15 +203,10 @@ export function InvoiceActions({
       document.body,
     );
 
-<<<<<<< HEAD
   const purgeModal =
     showPurgeModal &&
     createPortal(
-      <div className="fixed inset-0 z-[99999] flex items-center justify-center animate-in overflow-y-auto py-8">
-=======
-      {showPurgeModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center animate-in fade-in duration-200 overflow-y-auto py-8">
->>>>>>> ce7ff6bf18702bf9610533f56cda5fbc27f67473
+      <div className="fixed inset-0 z-[99999] flex items-center justify-center animate-in fade-in duration-200 overflow-y-auto py-8">
           <div
             className="absolute inset-0 bg-background/80 backdrop-blur-sm"
             onClick={() => !isPurging && closePurgeModal()}
