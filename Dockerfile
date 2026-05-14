@@ -17,8 +17,9 @@ COPY . .
 ARG NEXT_PUBLIC_APP_URL
 ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
 
+ARG DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/postgres
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5432/postgres" \
+RUN DATABASE_URL="${DATABASE_URL}" \
   npx prisma generate --schema packages/db/prisma/schema.prisma \
   && npm run build
 
