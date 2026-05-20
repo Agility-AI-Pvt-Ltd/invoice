@@ -8,7 +8,7 @@ import { checkAuthRateLimit } from "@/lib/ratelimit";
 import { verifyOrgAccess, createErrorResponse } from "@/lib/api-utils";
 
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -35,13 +35,30 @@ export async function POST(
       );
     }
 
+    let requestedRecipientEmail: string | null = null;
+    let requestedSubject: string | null = null;
+    let requestedMessage: string | null = null;
+    try {
+      const body = await req.json();
+      if (body && typeof body === "object") {
+        requestedRecipientEmail =
+          typeof body.recipientEmail === "string" ? body.recipientEmail.trim() : null;
+        requestedSubject =
+          typeof body.subject === "string" ? body.subject.trim() : null;
+        requestedMessage =
+          typeof body.message === "string" ? body.message.trim() : null;
+      }
+    } catch {
+      // Empty body is fine; default invoice values will be used.
+    }
+
     const invoice = await prisma.invoice.findUnique({
       where: { id, organizationId: orgId },
       include: { customer: true, organization: true, paymentLinks: { where: { status: "PENDING" } } },
     });
     if (!invoice) return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
 
-    const toEmail = invoice.customer.email;
+    const toEmail = requestedRecipientEmail || invoice.customer.email;
     if (!toEmail) {
       return NextResponse.json({ error: "Customer has no email address" }, { status: 400 });
     }
@@ -67,8 +84,10 @@ export async function POST(
     }
 
     const paymentLink = invoice.paymentLinks[0]?.shortUrl;
-    const html = buildEmailHtml(invoice, paymentLink);
-    const subject = `Invoice ${invoice.invoiceNumber} from ${invoice.organization.name} — ₹${Number(invoice.total).toFixed(2)}`;
+    const html = buildEmailHtml(invoice, paymentLink, requestedMessage);
+    const subject =
+      requestedSubject ||
+      `Invoice ${invoice.invoiceNumber} from ${invoice.organization.name} — ₹${Number(invoice.total).toFixed(2)}`;
 
     // Generate PDF for attachment
     const pdfDoc = buildPDF(invoice as any, (invoice.organization as any).defaultTemplate || "modern");
@@ -114,7 +133,12 @@ export async function POST(
   }
 }
 
-function buildEmailHtml(invoice: any, paymentLink?: string): string {
+function buildEmailHtml(invoice: any, paymentLink?: string, customMessage?: string | null): string {
+  const introMessage =
+    customMessage ||
+    `Please find your invoice from <strong>${invoice.organization.name}</strong>. 
+        Due date is <strong>${new Date(invoice.dueDate).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}</strong>.`;
+
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
@@ -127,8 +151,7 @@ function buildEmailHtml(invoice: any, paymentLink?: string): string {
     <div style="padding:28px 32px;">
       <p style="margin:0 0 20px;font-size:15px;color:#374151;">Hi <strong>${invoice.customer.name}</strong>,</p>
       <p style="margin:0 0 24px;font-size:14px;color:#6b7280;line-height:1.6;">
-        Please find your invoice from <strong>${invoice.organization.name}</strong>. 
-        Due date is <strong>${new Date(invoice.dueDate).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}</strong>.
+        ${introMessage}
       </p>
       <div style="background:#f9fafb;border-radius:8px;padding:20px;border:1px solid #e5e7eb;margin-bottom:24px;">
         <div style="display:flex;justify-content:space-between;margin-bottom:8px;">

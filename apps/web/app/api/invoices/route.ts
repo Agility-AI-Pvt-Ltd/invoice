@@ -66,12 +66,28 @@ export async function POST(request: Request) {
     // 2. Atomic Database Operations
     const result = await prisma.$transaction(async (tx) => {
       // 2a. Resolve or Create Customer
-      let customer = await tx.customer.findFirst({
-        where: { 
-          OR: [{ id: customerNameOrId }, { name: customerNameOrId }],
-          organizationId: organization.id 
-        },
+      let customer = await tx.customer.findUnique({
+        where: { id: customerNameOrId, organizationId: organization.id },
       });
+
+      if (!customer) {
+        const matchingCustomers = await tx.customer.findMany({
+          where: {
+            organizationId: organization.id,
+            name: { equals: customerNameOrId, mode: "insensitive" },
+          },
+          orderBy: { createdAt: "asc" },
+          take: 2,
+        });
+
+        if (matchingCustomers.length > 1) {
+          throw ApiErrors.CONFLICT(
+            `Multiple customers match "${customerNameOrId}". Use the customer ID to create this invoice.`
+          );
+        }
+
+        customer = matchingCustomers[0] ?? null;
+      }
 
       if (!customer) {
         if (!customerStateCode && !organization.stateCode) {
