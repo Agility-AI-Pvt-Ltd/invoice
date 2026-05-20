@@ -2,7 +2,7 @@
 
 import { prisma } from "@repo/db";
 import { requireAuth } from "../../../../lib/auth";
-import { revalidatePath } from "next/cache";
+import { revalidatePath } from "next/dist/server/web/spec-extension/revalidate";
 
 export async function addCustomer(formData: FormData) {
   const user = await requireAuth();
