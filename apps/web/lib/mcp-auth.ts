@@ -76,7 +76,8 @@ function createVerificationCode() {
   }
   
   for (let index = 0; index < 8; index += 1) {
-    code += CODE_ALPHABET[randomValues[index] % CODE_ALPHABET.length];
+    const byte = randomValues[index] ?? 0;
+    code += CODE_ALPHABET[byte % CODE_ALPHABET.length];
   }
   return code;
 }
