@@ -12,7 +12,7 @@ export async function POST() {
       throw ApiErrors.FORBIDDEN("Complete onboarding before generating MCP access codes");
     }
 
-    const issuedCode = issueMcpVerificationCode(user);
+    const issuedCode = await issueMcpVerificationCode(user);
     return NextResponse.json({
       success: true,
       ...issuedCode,

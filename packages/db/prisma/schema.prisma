@@ -23,6 +23,7 @@ model User {
   
   organizations Organization[] @relation("OrganizationUsers")
   ownedOrgs     Organization[] @relation("OrganizationOwner")
+  mcpVerificationCodes McpVerificationCode[]
 }
 
 model Organization {
@@ -67,9 +68,25 @@ model Organization {
   deals             Deal[]
   expenseLedgerEntries ExpenseLedgerEntry[]
   expenseBudgets       ExpenseBudget[]
+  mcpVerificationCodes McpVerificationCode[]
 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+model McpVerificationCode {
+  id             String       @id @default(cuid())
+  hashedCode     String       @unique
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email          String
+  expiresAt      DateTime
+  createdAt      DateTime     @default(now())
+
+  @@index([expiresAt])
+  @@index([userId, organizationId])
 }
 
 enum ProductKind {

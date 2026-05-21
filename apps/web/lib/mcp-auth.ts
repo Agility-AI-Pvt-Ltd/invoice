@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { prisma } from "@repo/db";
 import type { UserWithOrgs } from "./auth";
 import { env, resolveMcpBackendSecret } from "./env";
 
@@ -22,20 +23,6 @@ type StoredMcpVerificationCode = {
   email: string;
   expiresAt: number;
 };
-
-declare global {
-  var __mcpVerificationCodes:
-    | Map<string, StoredMcpVerificationCode>
-    | undefined;
-}
-
-const verificationCodes =
-  globalThis.__mcpVerificationCodes ??
-  new Map<string, StoredMcpVerificationCode>();
-
-if (process.env.NODE_ENV !== "production") {
-  globalThis.__mcpVerificationCodes = verificationCodes;
-}
 
 function getNowSeconds() {
   return Math.floor(Date.now() / 1000);
@@ -101,7 +88,17 @@ function signTokenClaims(claims: McpTokenClaims) {
   return `${header}.${payload}.${signature}`;
 }
 
-export function issueMcpVerificationCode(user: UserWithOrgs) {
+async function deleteExpiredVerificationCodes() {
+  await prisma.mcpVerificationCode.deleteMany({
+    where: {
+      expiresAt: {
+        lte: new Date(),
+      },
+    },
+  });
+}
+
+export async function issueMcpVerificationCode(user: UserWithOrgs) {
   const organizationId = user.ownedOrgs[0]?.id;
   if (!organizationId) {
     throw new Error("No organization available for MCP access");
@@ -110,12 +107,17 @@ export function issueMcpVerificationCode(user: UserWithOrgs) {
   const expiresIn = env.MCP_VERIFICATION_CODE_TTL_SECONDS;
   const expiresAt = Date.now() + expiresIn * 1000;
   const code = createVerificationCode();
+  const hashedCode = hashVerificationCode(code);
 
-  verificationCodes.set(hashVerificationCode(code), {
-    userId: user.id,
-    organizationId,
-    email: user.email,
-    expiresAt,
+  await deleteExpiredVerificationCodes();
+  await prisma.mcpVerificationCode.create({
+    data: {
+      hashedCode,
+      userId: user.id,
+      organizationId,
+      email: user.email,
+      expiresAt: new Date(expiresAt),
+    },
   });
 
   return {
@@ -125,10 +127,25 @@ export function issueMcpVerificationCode(user: UserWithOrgs) {
   };
 }
 
-export function exchangeMcpVerificationCode(code: string) {
+export async function exchangeMcpVerificationCode(code: string) {
   const hashedCode = hashVerificationCode(code);
-  const stored = verificationCodes.get(hashedCode);
-  verificationCodes.delete(hashedCode);
+  const stored = await prisma.$transaction(async (tx) => {
+    const record = await tx.mcpVerificationCode.findUnique({
+      where: { hashedCode },
+    });
+    if (!record) return null;
+
+    await tx.mcpVerificationCode.delete({
+      where: { hashedCode },
+    });
+
+    return {
+      userId: record.userId,
+      organizationId: record.organizationId,
+      email: record.email,
+      expiresAt: record.expiresAt.getTime(),
+    } satisfies StoredMcpVerificationCode;
+  });
 
   if (!stored || stored.expiresAt <= Date.now()) {
     return null;

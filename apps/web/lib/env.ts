@@ -13,6 +13,9 @@ function localhostAppUrl(): string {
  *   `next dev` / `next start` work without `.env`; in production mode we log a warning
  *   so GCP and other deploys remind you to set the real URL.
  */
+
+
+
 function resolvePublicAppUrl(): string {
   const explicit = process.env.NEXT_PUBLIC_APP_URL?.trim();
   if (explicit) return explicit;

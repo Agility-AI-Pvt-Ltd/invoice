@@ -237,7 +237,7 @@ export default async function SettingsPage({
   async function generateMcpCode() {
     "use server";
     const u = await requireAuth();
-    const issuedCode = issueMcpVerificationCode(u);
+    const issuedCode = await issueMcpVerificationCode(u);
     const query = new URLSearchParams({
       mcp_code: issuedCode.code,
       mcp_expires_at: issuedCode.expiresAt,
