@@ -1,41 +1,44 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@repo/db";
 import { Prisma } from "@prisma/client";
+import { getOrgOrThrow, getSessionOrThrow } from "@/lib/auth";
 
 // Basic security: require an MCP_SECRET_KEY to access these endpoints
 const MCP_SECRET_KEY = process.env.MCP_SECRET_KEY || "dev-mcp-secret-key-123";
 
 // Helper to verify auth
-function authenticate(req: Request) {
+function isLegacySecret(req: Request) {
   const authHeader = req.headers.get("authorization");
-  if (!authHeader || authHeader !== `Bearer ${MCP_SECRET_KEY}`) {
-    throw new Error("UNAUTHORIZED");
-  }
+  return authHeader === `Bearer ${MCP_SECRET_KEY}`;
 }
 
 export async function POST(req: Request) {
   try {
-    authenticate(req);
-
     const body = await req.json();
     const { action, organizationId, payload } = body;
+    let orgId = organizationId;
 
-    if (!organizationId) {
+    if (!isLegacySecret(req)) {
+      const user = await getSessionOrThrow();
+      orgId = getOrgOrThrow(user).id;
+    }
+
+    if (!orgId) {
       return NextResponse.json({ error: "organizationId is required" }, { status: 400 });
     }
 
     switch (action) {
       case "get_financial_summary":
-        return await getFinancialSummary(organizationId);
+        return await getFinancialSummary(orgId);
 
       case "list_unpaid_invoices":
-        return await listUnpaidInvoices(organizationId);
+        return await listUnpaidInvoices(orgId);
 
       case "get_inventory_status":
-        return await getInventoryStatus(organizationId);
+        return await getInventoryStatus(orgId);
 
       case "create_quick_invoice":
-        return await createQuickInvoice(organizationId, payload);
+        return await createQuickInvoice(orgId, payload);
 
       default:
         return NextResponse.json({ error: `Unknown MCP action: ${action}` }, { status: 400 });
@@ -43,6 +46,9 @@ export async function POST(req: Request) {
   } catch (error: any) {
     if (error.message === "UNAUTHORIZED") {
       return NextResponse.json({ error: "Unauthorized access to MCP API" }, { status: 401 });
+    }
+    if (typeof error.status === "number") {
+      return NextResponse.json({ error: error.message }, { status: error.status });
     }
     console.error("[MCP_API_ERROR]", error);
     return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });

@@ -40,7 +40,7 @@ export async function POST(request: Request) {
     const existingCustomer = await prisma.customer.findFirst({
       where: {
         organizationId: orgId,
-        name: data.name,
+        name: {equals: data.name, mode: "insensitive" },
       },
     });
 

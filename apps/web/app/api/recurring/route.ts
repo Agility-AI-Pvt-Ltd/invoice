@@ -3,6 +3,7 @@ import { prisma } from '@repo/db';
 import { getSession } from '../../../lib/auth';
 import { computeInvoiceTotals, validateItems } from '../../../lib/gst';
 
+
 export async function POST(request: Request) {
   try {
     const user = await getSession();
@@ -77,7 +78,7 @@ export async function POST(request: Request) {
           igstTotal,
           discountTotal,
           total: grandTotal,
-          items: { create: processedItems },
+          items: { create: processedItems.map(({ productId, ...rest }) => rest) },
         },
         include: { items: true, customer: true },
       });

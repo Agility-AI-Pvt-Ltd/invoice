@@ -3,16 +3,15 @@ import { prisma } from "@repo/db";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { env } from "../../../../lib/env";
+import { issueMcpVerificationCode } from "../../../../lib/mcp-auth";
+import { McpAccessPanel } from "./McpAccessPanel";
 import {
   Building2,
   CreditCard,
   Mail,
   MessageSquare,
   Save,
-  ChevronRight,
   CheckCircle,
-  AlertCircle,
-  Zap,
 } from "lucide-react";
 
 const inputCls =
@@ -77,7 +76,15 @@ function Field({
   );
 }
 
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = (await searchParams) ?? {};
+  const mcpCode = typeof params.mcp_code === "string" ? params.mcp_code : undefined;
+  const mcpExpiresAt =
+    typeof params.mcp_expires_at === "string" ? params.mcp_expires_at : undefined;
   const headersList = await headers();
   const host = headersList.get("host");
   const isLocal = host?.includes("localhost");
@@ -225,6 +232,17 @@ export default async function SettingsPage() {
       },
     });
     redirect("/dashboard/settings?success=whatsapp");
+  }
+
+  async function generateMcpCode() {
+    "use server";
+    const u = await requireAuth();
+    const issuedCode = issueMcpVerificationCode(u);
+    const query = new URLSearchParams({
+      mcp_code: issuedCode.code,
+      mcp_expires_at: issuedCode.expiresAt,
+    });
+    redirect(`/dashboard/settings?${query.toString()}`);
   }
 
   return (
@@ -685,41 +703,11 @@ export default async function SettingsPage() {
           </SectionCard>
         </form>
 
-        {/* ── MCP / API Access ── */}
-        <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm relative group">
-          <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-transparent pointer-events-none" />
-          <div className={sectionHeaderCls}>
-            <div className="w-10 h-10 bg-indigo-500/10 rounded-xl flex items-center justify-center flex-shrink-0 text-indigo-500">
-              <Zap className="w-5 h-5" />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <h2 className="text-sm font-bold text-foreground uppercase tracking-tight">
-                  API & MCP Access
-                </h2>
-                <span className="text-[10px] font-bold px-2 py-0.5 bg-indigo-500/10 text-indigo-600 rounded-full border border-indigo-500/20 uppercase tracking-widest animate-pulse">
-                  Coming soon
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground/70 mt-0.5">
-                Automate your finances with AI agents and custom workflows.
-              </p>
-            </div>
-          </div>
-          <div className="p-8">
-            <div className="bg-secondary/40 border border-border rounded-2xl p-6">
-              <p className="text-sm font-bold text-foreground mb-2 flex items-center gap-2">
-                🤖 AI Agent Connectivity
-              </p>
-              <p className="text-xs text-muted-foreground leading-relaxed max-w-2xl">
-                Soon, you'll be able to connect your AI assistants (Claude, GPT,
-                Cursor) directly to your invoicing data. They'll be able to
-                create invoices, track who owes you money, and send personalized
-                follow-ups on your behalf.
-              </p>
-            </div>
-          </div>
-        </div>
+        <McpAccessPanel
+          code={mcpCode}
+          expiresAt={mcpExpiresAt}
+          generateAction={generateMcpCode}
+        />
       </div>
     </div>
   );

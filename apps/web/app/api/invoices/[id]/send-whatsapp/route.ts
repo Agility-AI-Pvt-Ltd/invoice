@@ -25,13 +25,27 @@ export async function POST(
       );
     }
 
+    let requestedRecipientPhone: string | null = null;
+    let requestedMessage: string | null = null;
+    try {
+      const body = await req.json();
+      if (body && typeof body === "object") {
+        requestedRecipientPhone =
+          typeof body.recipientPhone === "string" ? body.recipientPhone.trim() : null;
+        requestedMessage =
+          typeof body.message === "string" ? body.message.trim() : null;
+      }
+    } catch {
+      // Empty body is fine; default invoice values will be used.
+    }
+
     const invoice = await prisma.invoice.findUnique({
       where: { id, organizationId },
       include: { customer: true, organization: true, paymentLinks: { where: { status: "PENDING" } } },
     });
     if (!invoice) return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
 
-    const toPhone = invoice.customer.phone;
+    const toPhone = requestedRecipientPhone || invoice.customer.phone;
     if (!toPhone) {
       return NextResponse.json({ error: "Customer has no phone number" }, { status: 400 });
     }
@@ -42,9 +56,10 @@ export async function POST(
     // We construct a friendly message
     const amount = Number(invoice.total).toFixed(2);
     const paymentLink = invoice.paymentLinks[0]?.shortUrl;
-    const message = `Hi ${invoice.customer.name}, your invoice ${invoice.invoiceNumber} from ${invoice.organization.name} for ₹${amount} is ready. 
+    const defaultMessage = `Hi ${invoice.customer.name}, your invoice ${invoice.invoiceNumber} from ${invoice.organization.name} for ₹${amount} is ready. 
 Due date: ${new Date(invoice.dueDate).toLocaleDateString('en-IN')}.
 ${paymentLink ? `Pay securely here: ${paymentLink}` : `View invoice here: ${env.NEXT_PUBLIC_APP_URL}/dashboard/invoices/${id}`}`;
+    const message = requestedMessage || defaultMessage;
 
     // If NOT configured, we return a WhatsApp Web link as a fallback
     if (!waConfig || !waConfig.isActive) {
