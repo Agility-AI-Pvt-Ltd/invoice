@@ -33,6 +33,10 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
   NEXT_PUBLIC_APP_URL: z.string().url("NEXT_PUBLIC_APP_URL must be a valid URL"),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  /** Secret used to sign and verify MCP backend tokens. */
+  MCP_BACKEND_SECRET: z.string().min(1).optional(),
+  MCP_VERIFICATION_CODE_TTL_SECONDS: z.coerce.number().int().positive().default(1800),
+  MCP_BACKEND_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
   // Optional — rate limiting (fail-open if absent)
   UPSTASH_REDIS_REST_URL: z.string().url().optional(),
   UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
@@ -57,8 +61,26 @@ function validateEnv() {
       .join("\n");
     throw new Error(`\n\n[env] Missing or invalid environment variables:\n${missing}\n`);
   }
+  if (result.data.NODE_ENV === "production" && !result.data.MCP_BACKEND_SECRET) {
+    throw new Error(
+      "\n\n[env] MCP_BACKEND_SECRET is required in production to sign MCP backend tokens.\n"
+    );
+  }
   return result.data;
 }
 
 // Validate once at module load — fails loudly at boot, not silently at runtime
 export const env = validateEnv();
+
+export function resolveMcpBackendSecret() {
+  const configured = env.MCP_BACKEND_SECRET?.trim();
+  if (configured) return configured;
+
+  if (env.NODE_ENV === "production") {
+    throw new Error(
+      "[env] MCP_BACKEND_SECRET is required in production to sign MCP backend tokens."
+    );
+  }
+
+  return "dev-invoice-mcp-secret-change-in-production";
+}

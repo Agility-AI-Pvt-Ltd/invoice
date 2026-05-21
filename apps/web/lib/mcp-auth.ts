@@ -65,8 +65,18 @@ function timingSafeEqualString(left: string, right: string) {
 
 function createVerificationCode() {
   let code = "";
+  const randomValues = new Uint8Array(8);
+  if (typeof globalThis.crypto !== "undefined" && globalThis.crypto.getRandomValues) {
+    globalThis.crypto.getRandomValues(randomValues);
+  } else {
+    // Fallback if somehow globalThis.crypto is unavailable
+    for (let i = 0; i < 8; i++) {
+        randomValues[i] = Math.floor(Math.random() * 256);
+    }
+  }
+  
   for (let index = 0; index < 8; index += 1) {
-    code += CODE_ALPHABET[crypto.randomInt(CODE_ALPHABET.length)];
+    code += CODE_ALPHABET[randomValues[index] % CODE_ALPHABET.length];
   }
   return code;
 }

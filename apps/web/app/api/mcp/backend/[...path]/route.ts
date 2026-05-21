@@ -62,7 +62,6 @@ function toSafeApiPath(path: string[]) {
     if (path.length === 2 && id) return `/api/invoices/${encodeURIComponent(id)}`;
     if (
       [
-        "pdf",
         "payment",
         "payment-link",
         "send-email",

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { InvoiceStatus, Prisma, prisma } from "@repo/db";
-import { getOrgOrThrow, getSessionOrThrow } from "@/lib/auth";
 import { handleApiError } from "@/lib/errors";
+import { getMcpApiSessionOrThrow } from "@/lib/mcp-api-auth";
 
 function boundedInteger(value: string | null, fallback: number, min: number, max: number) {
   const parsed = Number(value);
@@ -13,8 +13,7 @@ export async function GET(req: Request) {
   const context = "api:mcp:invoices:list";
 
   try {
-    const user = await getSessionOrThrow();
-    const organization = getOrgOrThrow(user);
+    const { organization } = await getMcpApiSessionOrThrow(req.headers);
     const url = new URL(req.url);
     const status = url.searchParams.get("status");
     const customerId = url.searchParams.get("customerId");

@@ -1,6 +1,6 @@
 import { Prisma, prisma } from "@repo/db";
-import { getOrgOrThrow, getSessionOrThrow } from "@/lib/auth";
 import { handleApiError } from "@/lib/errors";
+import { getMcpApiSessionOrThrow } from "@/lib/mcp-api-auth";
 import { NextResponse } from "next/server";
 
 function boundedInteger(value: string | null, fallback: number, min: number, max: number) {
@@ -13,8 +13,7 @@ export async function GET(req: Request) {
   const context = "api:mcp:products:list";
 
   try {
-    const user = await getSessionOrThrow();
-    const organization = getOrgOrThrow(user);
+    const { organization } = await getMcpApiSessionOrThrow(req.headers);
     const url = new URL(req.url);
     const search = url.searchParams.get("search") || url.searchParams.get("q");
     const categoryId = url.searchParams.get("categoryId");

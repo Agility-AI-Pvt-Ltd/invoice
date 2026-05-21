@@ -1,16 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@repo/db";
-import { getOrgOrThrow, getSessionOrThrow } from "@/lib/auth";
 import { handleApiError } from "@/lib/errors";
+import { getMcpApiSessionOrThrow } from "@/lib/mcp-api-auth";
 
-export async function GET() {
+export async function GET(req: Request) {
   const context = "api:mcp:me";
 
   try {
-    const user = await getSessionOrThrow();
-    const sessionOrg = getOrgOrThrow(user);
+    const session = await getMcpApiSessionOrThrow(req.headers);
     const organization = await prisma.organization.findUnique({
-      where: { id: sessionOrg.id },
+      where: { id: session.organization.id },
       select: {
         id: true,
         name: true,
@@ -33,9 +32,9 @@ export async function GET() {
 
     return NextResponse.json({
       user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
+        id: session.user.id,
+        email: session.user.email,
+        name: session.user.name,
       },
       organization,
     });

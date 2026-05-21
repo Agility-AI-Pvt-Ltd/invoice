@@ -1,8 +1,9 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { prisma } from "@repo/db";
 import { redirect } from "next/navigation";
 import { ApiErrors } from "./errors";
 import { Organization, User } from "@repo/db";
+import { getMcpBearerToken, verifyMcpBackendToken } from "./mcp-auth";
 
 /**
  * Extended User type to include owned organizations.
@@ -11,9 +12,25 @@ export type UserWithOrgs = User & {
   ownedOrgs: Pick<Organization, "id" | "stateCode" | "name">[];
 };
 
-async function getUserId() {
+const ORG_SELECT = {
+  id: true,
+  stateCode: true,
+  name: true,
+} as const;
+
+async function getAuthIdentity() {
   const cookieStore = await cookies();
-  return cookieStore.get("userId")?.value ?? null;
+  const cookieUserId = cookieStore.get("userId")?.value;
+  if (cookieUserId) return { userId: cookieUserId, organizationId: null };
+
+  const headerStore = await headers();
+  const token = getMcpBearerToken(headerStore);
+  if (!token) return null;
+
+  const claims = verifyMcpBackendToken(token);
+  if (!claims) return null;
+
+  return { userId: claims.sub, organizationId: claims.orgId };
 }
 
 const USER_SELECT = {
@@ -25,11 +42,7 @@ const USER_SELECT = {
   createdAt: true,
   updatedAt: true,
   ownedOrgs: {
-    select: {
-      id: true,
-      stateCode: true,
-      name: true,
-    },
+    select: ORG_SELECT,
   },
 } as const;
 
@@ -37,14 +50,23 @@ const USER_SELECT = {
  * Fetches the current session user. Returns null if not authenticated.
  */
 export async function getSession(): Promise<UserWithOrgs | null> {
-  const userId = await getUserId();
-  if (!userId) return null;
+  const identity = await getAuthIdentity();
+  if (!identity) return null;
   
   const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: USER_SELECT,
+    where: { id: identity.userId },
+    select: identity.organizationId
+      ? {
+          ...USER_SELECT,
+          ownedOrgs: {
+            where: { id: identity.organizationId },
+            select: ORG_SELECT,
+          },
+        }
+      : USER_SELECT,
   });
 
+  if (identity.organizationId && user?.ownedOrgs.length === 0) return null;
   return user as UserWithOrgs | null;
 }
 
@@ -56,10 +78,12 @@ export async function requireAuth(): Promise<UserWithOrgs> {
 
   if (!user) {
     redirect("/login");
+    throw new Error("Redirecting to login");
   }
   
   if (!user.isOnboarded) {
     redirect("/onboarding");
+    throw new Error("Redirecting to onboarding");
   }
 
   return user;
