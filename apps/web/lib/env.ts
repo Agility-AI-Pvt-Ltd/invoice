@@ -62,8 +62,10 @@ function validateEnv() {
     throw new Error(`\n\n[env] Missing or invalid environment variables:\n${missing}\n`);
   }
   if (result.data.NODE_ENV === "production" && !result.data.MCP_BACKEND_SECRET) {
-    throw new Error(
-      "\n\n[env] MCP_BACKEND_SECRET is required in production to sign MCP backend tokens.\n"
+    // Warn at build time; runtime guard in resolveMcpBackendSecret() throws if
+    // the secret is actually used without being configured.
+    console.warn(
+      "[env] MCP_BACKEND_SECRET is not set — MCP backend token signing will fail at runtime."
     );
   }
   return result.data;
