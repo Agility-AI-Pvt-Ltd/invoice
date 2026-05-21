@@ -83,6 +83,15 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
+      - name: Resolve any previously-failed migrations (Prisma → Neon)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        working-directory: packages/db
+        run: |
+          # Mark the failed migration as rolled-back so Prisma re-runs it with the fixed SQL.
+          # The `|| true` is a no-op once the migration has succeeded cleanly.
+          npx prisma migrate resolve --rolled-back 20260519072547_sync_current_schema || true
+
       - name: Apply database migrations (Prisma → Neon)
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
