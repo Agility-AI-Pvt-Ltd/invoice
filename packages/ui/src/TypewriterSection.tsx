@@ -952,8 +952,8 @@ function StackFullPanel({ p }: { p: MotionValue<number> }) {
           }}
         >
           Our platform keeps every invoice accessible, trackable, and
-          beautifully arranged — so you always know what's paid, what's pending,
-          and what needs your attention.
+          beautifully arranged — so you always know what&apos;s paid, what&apos;s
+          pending, and what needs your attention.
         </p>
 
         {/* Feature list */}
