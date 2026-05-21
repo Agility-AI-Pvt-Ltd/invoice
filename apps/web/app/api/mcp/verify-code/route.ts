@@ -31,7 +31,7 @@ export async function POST(req: Request) {
       throw ApiErrors.BAD_REQUEST("code is required");
     }
 
-    const result = exchangeMcpVerificationCode(code);
+    const result = await exchangeMcpVerificationCode(code);
     if (!result) {
       return NextResponse.json(
         { valid: false, error: "Invalid or expired MCP verification code" },
