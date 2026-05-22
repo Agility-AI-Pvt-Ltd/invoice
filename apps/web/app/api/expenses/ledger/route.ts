@@ -1,13 +1,10 @@
 import { NextResponse } from "next/server";
-import type { Prisma } from "@repo/db";
-import { prisma } from "@repo/db";
 import { getSession } from "@/lib/auth";
+import {
+  createExpenseLedgerEntry,
+  listExpenseLedgerEntries,
+} from "@/lib/expenses/ledger";
 import { ledgerCreateSchema } from "@/lib/expenses/schemas";
-
-function parseOccurredAt(raw: string): Date | null {
-  const d = raw.includes("T") ? new Date(raw) : new Date(`${raw}T12:00:00.000Z`);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
 
 export async function GET(request: Request) {
   try {
@@ -21,59 +18,23 @@ export async function GET(request: Request) {
     const from = url.searchParams.get("from");
     const to = url.searchParams.get("to");
     const kind = url.searchParams.get("kind");
+    const limit = Number(url.searchParams.get("limit") ?? undefined);
+    const offset = Number(url.searchParams.get("offset") ?? undefined);
 
-    const where: Prisma.ExpenseLedgerEntryWhereInput = {
-      organizationId,
-    };
-
-    if (from || to) {
-      const bounds: Prisma.DateTimeFilter = {};
-      if (from) {
-        const start = parseOccurredAt(from);
-        if (!start) {
-          return NextResponse.json({ error: "Invalid from date" }, { status: 400 });
-        }
-        bounds.gte = start;
-      }
-      if (to) {
-        const end = parseOccurredAt(to);
-        if (!end) {
-          return NextResponse.json({ error: "Invalid to date" }, { status: 400 });
-        }
-        bounds.lte = end;
-      }
-      where.occurredAt = bounds;
-    }
-
-    if (kind === "INCOME" || kind === "EXPENSE") {
-      where.kind = kind;
-    }
-
-    const rows = await prisma.expenseLedgerEntry.findMany({
-      where,
-      orderBy: { occurredAt: "desc" },
-      take: 5000,
-      select: {
-        id: true,
-        kind: true,
-        category: true,
-        amount: true,
-        currency: true,
-        occurredAt: true,
-        description: true,
-      },
+    const result = await listExpenseLedgerEntries(organizationId, {
+      from,
+      to,
+      kind,
+      limit,
+      offset,
     });
 
-    return NextResponse.json({
-      entries: rows.map((r) => ({
-        ...r,
-        amount: Number(r.amount),
-        occurredAt: r.occurredAt.toISOString(),
-      })),
-    });
+    return NextResponse.json(result);
   } catch (e) {
     console.error("[expenses/ledger GET]", e);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    const message = e instanceof Error ? e.message : "Internal server error";
+    const status = message.startsWith("Invalid ") ? 400 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }
 
@@ -94,39 +55,12 @@ export async function POST(request: Request) {
       );
     }
 
-    const occurredAt = parseOccurredAt(parsed.data.occurredAt);
-    if (!occurredAt) {
-      return NextResponse.json({ error: "Invalid occurredAt" }, { status: 400 });
-    }
-
-    const row = await prisma.expenseLedgerEntry.create({
-      data: {
-        organizationId,
-        kind: parsed.data.kind,
-        category: parsed.data.category.trim(),
-        amount: parsed.data.amount,
-        currency: parsed.data.currency ?? "INR",
-        occurredAt,
-        description: parsed.data.description?.trim() || null,
-      },
-      select: {
-        id: true,
-        kind: true,
-        category: true,
-        amount: true,
-        currency: true,
-        occurredAt: true,
-        description: true,
-      },
-    });
-
-    return NextResponse.json({
-      ...row,
-      amount: Number(row.amount),
-      occurredAt: row.occurredAt.toISOString(),
-    });
+    const row = await createExpenseLedgerEntry(organizationId, parsed.data);
+    return NextResponse.json(row);
   } catch (e) {
     console.error("[expenses/ledger POST]", e);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    const message = e instanceof Error ? e.message : "Internal server error";
+    const status = message.startsWith("Invalid ") ? 400 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

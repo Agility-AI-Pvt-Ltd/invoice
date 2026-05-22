@@ -57,6 +57,22 @@ function toSafeApiPath(path: string[]) {
       return `/api/recurring/${encodeURIComponent(id)}/${action}`;
     }
   }
+  if (resource === "expenses") {
+    if (id === "summary" && path.length === 2) return "/api/expenses/summary";
+    if (id === "report" && path.length === 2) return "/api/expenses/report";
+    if (id === "ledger") {
+      if (path.length === 2) return "/api/expenses/ledger";
+      if (path.length === 3 && action) {
+        return `/api/expenses/ledger/${encodeURIComponent(action)}`;
+      }
+    }
+    if (id === "budgets") {
+      if (path.length === 2) return "/api/expenses/budgets";
+      if (path.length === 3 && action) {
+        return `/api/expenses/budgets/${encodeURIComponent(action)}`;
+      }
+    }
+  }
   if (resource === "invoices") {
     if (path.length === 1) return "/api/invoices";
     if (path.length === 2 && id) return `/api/invoices/${encodeURIComponent(id)}`;
@@ -130,5 +146,13 @@ export async function GET(req: Request, context: RouteContext) {
 }
 
 export async function POST(req: Request, context: RouteContext) {
+  return proxyToAppApi(req, context);
+}
+
+export async function PATCH(req: Request, context: RouteContext) {
+  return proxyToAppApi(req, context);
+}
+
+export async function DELETE(req: Request, context: RouteContext) {
   return proxyToAppApi(req, context);
 }

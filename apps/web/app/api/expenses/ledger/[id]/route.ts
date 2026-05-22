@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@repo/db";
 import { getSession } from "@/lib/auth";
+import {
+  deleteExpenseLedgerEntry,
+  updateExpenseLedgerEntry,
+} from "@/lib/expenses/ledger";
 import { ledgerPatchSchema } from "@/lib/expenses/schemas";
-
-function parseOccurredAt(raw: string): Date | null {
-  const d = raw.includes("T") ? new Date(raw) : new Date(`${raw}T12:00:00.000Z`);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
 
 export async function PATCH(
   request: Request,
@@ -20,13 +18,6 @@ export async function PATCH(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const existing = await prisma.expenseLedgerEntry.findFirst({
-      where: { id, organizationId },
-    });
-    if (!existing) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
-    }
-
     const json = await request.json();
     const parsed = ledgerPatchSchema.safeParse(json);
     if (!parsed.success) {
@@ -36,48 +27,17 @@ export async function PATCH(
       );
     }
 
-    let occurredAt: Date | undefined;
-    if (parsed.data.occurredAt !== undefined) {
-      const d = parseOccurredAt(parsed.data.occurredAt);
-      if (!d) {
-        return NextResponse.json({ error: "Invalid occurredAt" }, { status: 400 });
-      }
-      occurredAt = d;
+    const row = await updateExpenseLedgerEntry(organizationId, id, parsed.data);
+    if (!row) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    const row = await prisma.expenseLedgerEntry.update({
-      where: { id },
-      data: {
-        ...(parsed.data.kind !== undefined ? { kind: parsed.data.kind } : {}),
-        ...(parsed.data.category !== undefined
-          ? { category: parsed.data.category.trim() }
-          : {}),
-        ...(parsed.data.amount !== undefined ? { amount: parsed.data.amount } : {}),
-        ...(parsed.data.currency !== undefined ? { currency: parsed.data.currency } : {}),
-        ...(occurredAt !== undefined ? { occurredAt } : {}),
-        ...(parsed.data.description !== undefined
-          ? { description: parsed.data.description?.trim() || null }
-          : {}),
-      },
-      select: {
-        id: true,
-        kind: true,
-        category: true,
-        amount: true,
-        currency: true,
-        occurredAt: true,
-        description: true,
-      },
-    });
-
-    return NextResponse.json({
-      ...row,
-      amount: Number(row.amount),
-      occurredAt: row.occurredAt.toISOString(),
-    });
+    return NextResponse.json(row);
   } catch (e) {
     console.error("[expenses/ledger/:id PATCH]", e);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    const message = e instanceof Error ? e.message : "Internal server error";
+    const status = message.startsWith("Invalid ") ? 400 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }
 
@@ -93,11 +53,8 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const deleted = await prisma.expenseLedgerEntry.deleteMany({
-      where: { id, organizationId },
-    });
-
-    if (deleted.count === 0) {
+    const deleted = await deleteExpenseLedgerEntry(organizationId, id);
+    if (!deleted) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
