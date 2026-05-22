@@ -2,9 +2,18 @@ import { NextResponse } from "next/server";
 import { prisma } from "@repo/db";
 import { Prisma } from "@prisma/client";
 import { getOrgOrThrow, getSessionOrThrow } from "@/lib/auth";
+import { computeExpenseSummary } from "@/lib/expenses/summary";
+import {
+  createExpenseLedgerEntry,
+  currentUtcMonthRange,
+  listExpenseLedgerEntries,
+  summarizeEntriesByCategory,
+} from "@/lib/expenses/ledger";
+import { ledgerCreateSchema } from "@/lib/expenses/schemas";
 
 // Basic security: require an MCP_SECRET_KEY to access these endpoints
 const MCP_SECRET_KEY = process.env.MCP_SECRET_KEY || "dev-mcp-secret-key-123";
+type McpActionPayload = Record<string, unknown>;
 
 // Helper to verify auth
 function isLegacySecret(req: Request) {
@@ -14,7 +23,11 @@ function isLegacySecret(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    const body = (await req.json()) as {
+      action?: string;
+      organizationId?: string;
+      payload?: unknown;
+    };
     const { action, organizationId, payload } = body;
     let orgId = organizationId;
 
@@ -40,24 +53,164 @@ export async function POST(req: Request) {
       case "create_quick_invoice":
         return await createQuickInvoice(orgId, payload);
 
+      case "get_expense_summary":
+        return await getExpenseTrackerSummary(orgId);
+
+      case "list_ledger_entries":
+      case "list_expense_ledger_entries":
+        return await listLedgerEntriesTool(orgId, payload);
+
+      case "add_ledger_entry":
+      case "create_ledger_entry":
+        return await createLedgerEntryTool(orgId, payload);
+
+      case "add_income":
+      case "log_income":
+        return await createLedgerEntryTool(orgId, {
+          ...normalizeMcpPayload(payload),
+          kind: "INCOME",
+        });
+
+      case "add_expense":
+      case "log_expense":
+        return await createLedgerEntryTool(orgId, {
+          ...normalizeMcpPayload(payload),
+          kind: "EXPENSE",
+        });
+
+      case "get_income_by_category":
+        return await getLedgerKindByCategoryTool(orgId, "INCOME", payload);
+
+      case "get_expenses_by_category":
+      case "get_spending_by_category":
+        return await getLedgerKindByCategoryTool(orgId, "EXPENSE", payload);
+
       default:
         return NextResponse.json({ error: `Unknown MCP action: ${action}` }, { status: 400 });
     }
-  } catch (error: any) {
-    if (error.message === "UNAUTHORIZED") {
+  } catch (error) {
+    const status =
+      error && typeof error === "object" && "status" in error
+        ? error.status
+        : undefined;
+    const message = error instanceof Error ? error.message : "Internal server error";
+
+    if (message === "UNAUTHORIZED") {
       return NextResponse.json({ error: "Unauthorized access to MCP API" }, { status: 401 });
     }
-    if (typeof error.status === "number") {
-      return NextResponse.json({ error: error.message }, { status: error.status });
+    if (typeof status === "number") {
+      return NextResponse.json({ error: message }, { status });
     }
     console.error("[MCP_API_ERROR]", error);
-    return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
 // ----------------------------------------------------------------------
 // MCP TOOL IMPLEMENTATIONS
 // ----------------------------------------------------------------------
+
+function numberFromPayload(value: unknown) {
+  if (value === null || value === undefined || value === "") return undefined;
+  return Number(value);
+}
+
+function normalizeMcpPayload(payload: unknown): McpActionPayload {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return {};
+  return payload as McpActionPayload;
+}
+
+async function getExpenseTrackerSummary(orgId: string) {
+  const summary = await computeExpenseSummary(orgId);
+  return NextResponse.json({ summary });
+}
+
+async function listLedgerEntriesTool(orgId: string, rawPayload: unknown = {}) {
+  const payload = normalizeMcpPayload(rawPayload);
+  let result;
+  try {
+    result = await listExpenseLedgerEntries(orgId, {
+      from: typeof payload.from === "string" ? payload.from : undefined,
+      to: typeof payload.to === "string" ? payload.to : undefined,
+      kind: typeof payload.kind === "string" ? payload.kind : undefined,
+      limit: numberFromPayload(payload.limit),
+      offset: numberFromPayload(payload.offset),
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("Invalid ")) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    throw error;
+  }
+
+  return NextResponse.json(result);
+}
+
+async function createLedgerEntryTool(orgId: string, payload: unknown = {}) {
+  const parsed = ledgerCreateSchema.safeParse(payload);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.issues.map((issue) => issue.message).join(", ") },
+      { status: 400 },
+    );
+  }
+
+  let entry;
+  try {
+    entry = await createExpenseLedgerEntry(orgId, parsed.data);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("Invalid ")) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    throw error;
+  }
+
+  return NextResponse.json({
+    success: true,
+    message: `${entry.kind === "INCOME" ? "Income" : "Expense"} ledger entry added.`,
+    entry,
+  });
+}
+
+async function getLedgerKindByCategoryTool(
+  orgId: string,
+  kind: "INCOME" | "EXPENSE",
+  rawPayload: unknown = {},
+) {
+  const payload = normalizeMcpPayload(rawPayload);
+  const monthRange = currentUtcMonthRange();
+  const from =
+    typeof payload.from === "string" ? payload.from : monthRange.from.toISOString();
+  const to =
+    typeof payload.to === "string"
+      ? payload.to
+      : new Date(monthRange.to.getTime() - 1).toISOString();
+  let result;
+  try {
+    result = await listExpenseLedgerEntries(orgId, {
+      from,
+      to,
+      kind,
+      limit: numberFromPayload(payload.limit),
+      offset: numberFromPayload(payload.offset),
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("Invalid ")) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    throw error;
+  }
+
+  return NextResponse.json({
+    kind,
+    from,
+    to,
+    categories: summarizeEntriesByCategory(result.entries),
+    entries: result.entries,
+    total: result.total,
+    hasMore: result.hasMore,
+  });
+}
 
 async function getFinancialSummary(orgId: string) {
   const invoices = await prisma.invoice.findMany({
