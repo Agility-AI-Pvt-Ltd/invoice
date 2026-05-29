@@ -1,3 +1,5 @@
+"use client";
+
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import { formatInr } from "../_lib/format";
 import type { BreakdownRow } from "@/lib/expenses/breakdown";
