@@ -6,11 +6,15 @@ import { ThemeProvider } from "../components/theme-provider";
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
+  display: "swap",
+  preload: false,
 });
 
 const outfit = Outfit({
   subsets: ["latin"],
   variable: "--font-outfit",
+  display: "swap",
+  preload: false,
 });
 
 export const metadata: Metadata = {
