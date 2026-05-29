@@ -12,6 +12,7 @@ import {
   Download
 } from 'lucide-react';
 import { InvoiceActions } from './InvoiceActions';
+import { InvoiceAgingChart } from './_components/InvoiceAgingChart';
 
 const STATUS_STYLES: Record<string, string> = {
   DRAFT: "bg-secondary text-muted-foreground border-border",
@@ -48,6 +49,38 @@ export default async function InvoicesPage({
     include: { customer: true },
   });
 
+  // ── Invoice Aging data ──
+  const now = new Date();
+  const unpaidInvoices = await prisma.invoice.findMany({
+    where: {
+      organizationId,
+      status: { in: ['SENT', 'PARTIALLY_PAID', 'OVERDUE'] },
+    },
+    select: { dueDate: true, total: true },
+  });
+
+  const agingBuckets = [
+    { label: 'Current (0–30d)', count: 0, amount: 0, color: '#10b981' },
+    { label: 'Warning (31–60d)', count: 0, amount: 0, color: '#f59e0b' },
+    { label: 'Critical (60d+)', count: 0, amount: 0, color: '#ef4444' },
+  ];
+
+  for (const inv of unpaidInvoices) {
+    const daysOverdue = Math.max(0, Math.floor((now.getTime() - new Date(inv.dueDate).getTime()) / (1000 * 60 * 60 * 24)));
+    const total = Number(inv.total);
+    if (daysOverdue <= 30) {
+      agingBuckets[0]!.count++;
+      agingBuckets[0]!.amount += total;
+    } else if (daysOverdue <= 60) {
+      agingBuckets[1]!.count++;
+      agingBuckets[1]!.amount += total;
+    } else {
+      agingBuckets[2]!.count++;
+      agingBuckets[2]!.amount += total;
+    }
+  }
+
+
   return (
     <div className="p-8 max-w-6xl mx-auto w-full space-y-6">
       {/* Header */}
@@ -64,6 +97,9 @@ export default async function InvoicesPage({
           Create Invoice
         </Link>
       </div>
+
+      {/* Invoice Aging Chart */}
+      <InvoiceAgingChart buckets={agingBuckets} />
 
       {/* Toolbar */}
       <form method="GET" className="flex flex-col md:flex-row gap-4 items-center justify-between">
@@ -129,7 +165,14 @@ export default async function InvoicesPage({
               ) : invoices.map((inv) => (
                 <tr key={inv.id} className="hover:bg-secondary/30 transition-all group cursor-default">
                   <td className="px-6 py-5">
-                    <span className="font-bold text-foreground group-hover:text-primary transition-colors">#{inv.invoiceNumber}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-foreground group-hover:text-primary transition-colors">#{inv.invoiceNumber}</span>
+                      {inv.isAnomaly && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-500/10 text-red-600 border border-red-500/20" title={inv.anomalyReason || "Anomaly detected"}>
+                          Anomaly
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-6 py-5">
                     <div className="flex items-center gap-3">

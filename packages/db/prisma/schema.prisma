@@ -52,6 +52,7 @@ model Organization {
   whatsappNumber   String?
 
   inventoryTrackingEnabled Boolean @default(false)
+  customAnomalyThreshold Float?
 
   customers         Customer[]
   productCategories ProductCategory[]
@@ -295,6 +296,10 @@ model Invoice {
 
   recurringInvoiceId String?
   recurringInvoice   RecurringInvoice? @relation(fields: [recurringInvoiceId], references: [id], onDelete: SetNull)
+
+  isAnomaly      Boolean      @default(false)
+  anomalyReason  String?
+  anomalyScore   Float?
 
   items          InvoiceItem[]
   payments       Payment[]
