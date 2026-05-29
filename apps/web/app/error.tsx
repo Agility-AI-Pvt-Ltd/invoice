@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { AlertCircle, RefreshCcw, Home } from "lucide-react";
 import Link from "next/link";
 
@@ -11,9 +12,33 @@ export default function Error({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const router = useRouter();
+
   useEffect(() => {
+    // Next.js redirect() throws an internal error with a NEXT_REDIRECT digest.
+    // During client-side navigation this reaches the error boundary instead of
+    // completing the redirect. Detect it and perform the redirect manually.
+    if (error.digest?.startsWith("NEXT_REDIRECT")) {
+      // digest format: "NEXT_REDIRECT;replace|push;/path;statusCode;"
+      const parts = error.digest.split(";");
+      const method = parts[1]; // "replace" or "push"
+      const destination = parts[2]; // e.g. "/login"
+      if (destination) {
+        if (method === "replace") {
+          router.replace(destination);
+        } else {
+          router.push(destination);
+        }
+      }
+      return;
+    }
     console.error("Global Error Boundary caught:", error);
-  }, [error]);
+  }, [error, router]);
+
+  // If it's a redirect, render nothing while the navigation completes
+  if (error.digest?.startsWith("NEXT_REDIRECT")) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-6">
@@ -21,11 +46,11 @@ export default function Error({
         <div className="w-20 h-20 bg-destructive/10 rounded-3xl flex items-center justify-center mx-auto text-destructive animate-pulse">
           <AlertCircle className="w-10 h-10" />
         </div>
-        
+
         <div className="space-y-3">
           <h1 className="text-3xl font-black tracking-tight heading-display text-foreground">Something went wrong</h1>
           <p className="text-muted-foreground text-sm leading-relaxed">
-            We encountered an unexpected error. Don't worry, your data is safe. 
+            We encountered an unexpected error. Don&apos;t worry, your data is safe.
             Try refreshing the page or return to safety.
           </p>
         </div>
@@ -38,7 +63,7 @@ export default function Error({
             <RefreshCcw className="w-5 h-5" />
             Try Again
           </button>
-          
+
           <Link
             href="/dashboard"
             className="flex items-center justify-center gap-2 w-full py-4 bg-secondary text-foreground font-bold rounded-2xl hover:bg-border transition-all border border-border"
