@@ -31,7 +31,7 @@ export default function DateRangePicker({ from, to, onChange }: DateRangePickerP
         <label className="text-xs font-medium text-muted-foreground mb-1">From</label>
         <DatePicker
           selected={startDate}
-          onChange={(date: Date) => setStartDate(date)}
+          onChange={(date: Date | null) => setStartDate(date ?? new Date())}
           dateFormat="yyyy-MM"
           showMonthYearPicker
           className="bg-background border border-border rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
@@ -41,7 +41,7 @@ export default function DateRangePicker({ from, to, onChange }: DateRangePickerP
         <label className="text-xs font-medium text-muted-foreground mb-1">To</label>
         <DatePicker
           selected={endDate}
-          onChange={(date: Date) => setEndDate(date)}
+          onChange={(date: Date | null) => setEndDate(date ?? new Date())}
           dateFormat="yyyy-MM"
           showMonthYearPicker
           className="bg-background border border-border rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
