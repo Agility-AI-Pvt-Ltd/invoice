@@ -14,13 +14,13 @@ export default async function InventoryPage() {
   const rows =
     org?.inventoryTrackingEnabled === true
       ? await prisma.inventoryItem.findMany({
-          where: { warehouse: { organizationId } },
-          include: {
-            product: { select: { id: true, name: true, sku: true, productKind: true } },
-            warehouse: { select: { id: true, name: true, isDefault: true } },
-          },
-          orderBy: [{ product: { name: "asc" } }],
-        })
+        where: { warehouse: { organizationId } },
+        include: {
+          product: { select: { id: true, name: true, sku: true, productKind: true } },
+          warehouse: { select: { id: true, name: true, isDefault: true } },
+        },
+        orderBy: [{ product: { name: "asc" } }],
+      })
       : [];
 
   const lowStock = rows.filter((r) => {
@@ -135,3 +135,4 @@ export default async function InventoryPage() {
     </div>
   );
 }
+//fs
