@@ -34,6 +34,7 @@ import {
 } from "recharts";
 import { formatInr, formatInrSigned } from "../_lib/format";
 import { SpendHeatmap } from "../_components/SpendHeatmap";
+import DateRangePicker from "../_components/DateRangePicker";
 
 type PeriodRow = { period: string; income: number; expenses: number };
 
@@ -171,7 +172,11 @@ export default function ExpenseAnalyticsPage() {
   const [customThresholdInput, setCustomThresholdInput] = useState("");
   const [isSavingThreshold, setIsSavingThreshold] = useState(false);
 
-  const saveCustomThreshold = async (val: string | null) => {
+    // Handler for DateRangePicker
+  const handleDateRangeChange = (from: string, to: string) => {
+    setFromDate(from);
+    setToDate(to);
+  }; = async (val: string | null) => {
     setIsSavingThreshold(true);
     try {
       const res = await fetch("/api/settings/anomaly-threshold", {
@@ -347,28 +352,7 @@ useEffect(() => {
 
         {/* Custom date range picker */}
         {granularity === "custom" && (
-          <div className="flex flex-wrap items-center gap-2 animate-in slide-in-from-top-2 duration-300">
-            <div className="flex items-center gap-2 rounded-2xl border border-border bg-card px-4 py-2 shadow-sm">
-              <Calendar className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              <label className="text-xs font-semibold text-muted-foreground">From</label>
-              <input
-                type="month"
-                value={fromDate}
-                onChange={(e) => setFromDate(e.target.value)}
-                className="bg-transparent border-none text-xs font-bold text-foreground focus:ring-0 outline-none cursor-pointer"
-              />
-            </div>
-            <div className="flex items-center gap-2 rounded-2xl border border-border bg-card px-4 py-2 shadow-sm">
-              <Calendar className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              <label className="text-xs font-semibold text-muted-foreground">To</label>
-              <input
-                type="month"
-                value={toDate}
-                onChange={(e) => setToDate(e.target.value)}
-                className="bg-transparent border-none text-xs font-bold text-foreground focus:ring-0 outline-none cursor-pointer"
-              />
-            </div>
-          </div>
+                        <DateRangePicker from={fromDate} to={toDate} onChange={handleDateRangeChange} />
         )}
 
 <div className="flex flex-wrap gap-2">
