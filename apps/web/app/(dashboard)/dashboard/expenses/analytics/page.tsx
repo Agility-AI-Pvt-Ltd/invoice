@@ -637,6 +637,9 @@ useEffect(() => {
                   Anomalous ({`> ${formatInr(activeUpperLimit)}`})
                 </span>
               </div>
+<p className="mt-2 text-xs text-muted-foreground">
+  Purpose: This uses historical standard deviation to define a "normal" invoice range. Average (Mean) is {formatInr(avg)}. Upper Limit (Mean + 2&#931;) is {formatInr(activeUpperLimit)}. Anything above is considered an anomaly. The green bar shows the normal spread ({formatInr(min)} – {formatInr(activeUpperLimit)}), and the orange bar marks the anomalous zone. The black marker indicates the current average.
+</p>
             </section>
             );
           })()}
