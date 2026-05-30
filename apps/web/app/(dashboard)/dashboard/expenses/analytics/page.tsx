@@ -34,7 +34,7 @@ import {
 } from "recharts";
 import { formatInr, formatInrSigned } from "../_lib/format";
 import { SpendHeatmap } from "../_components/SpendHeatmap";
-import DateRangePicker from "../_components/DateRangePicker";
+import DateRangePicker from "../../_components/DateRangePicker";
 
 type PeriodRow = { period: string; income: number; expenses: number };
 
@@ -173,10 +173,14 @@ export default function ExpenseAnalyticsPage() {
   const [isSavingThreshold, setIsSavingThreshold] = useState(false);
 
     // Handler for DateRangePicker
+  // Handler for DateRangePicker
   const handleDateRangeChange = (from: string, to: string) => {
     setFromDate(from);
     setToDate(to);
-  }; = async (val: string | null) => {
+  };
+
+  // Save custom anomaly threshold
+  const saveCustomThreshold = async (val: string | null) => {
     setIsSavingThreshold(true);
     try {
       const res = await fetch("/api/settings/anomaly-threshold", {
@@ -186,7 +190,9 @@ export default function ExpenseAnalyticsPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        setAnomalyData((prev) => prev ? { ...prev, customAnomalyThreshold: data.customAnomalyThreshold } : null);
+        setAnomalyData((prev) =>
+          prev ? { ...prev, customAnomalyThreshold: data.customAnomalyThreshold } : null
+        );
         setIsEditingCustom(false);
       }
     } catch (err) {
