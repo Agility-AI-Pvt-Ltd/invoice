@@ -13,10 +13,7 @@ type DateRangePickerProps = {
 export default function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
   // Convert "YYYY-MM" strings to Date objects (first day of month)
   const parse = (value: string) => {
-    if (!value) return new Date();
-    const parts = value.split("-");
-    const year = Number(parts[0]);
-    const month = parts[1] ? Number(parts[1]) : 1;
+    const [year, month] = value.split("-").map(Number);
     return new Date(year, month - 1, 1);
   };
 
