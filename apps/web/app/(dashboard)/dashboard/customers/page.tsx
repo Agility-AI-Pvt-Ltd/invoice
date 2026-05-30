@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Users, UserPlus, Search, Filter, Download, MoreHorizontal, Pencil } from 'lucide-react';
 import CustomerModal from './CustomerModal';
 import { CustomerActions } from './CustomerActions';
+import { CustomerRevenueChart } from './_components/CustomerRevenueChart';
 
 export default async function CustomersPage({
   searchParams,
@@ -27,6 +28,30 @@ export default async function CustomersPage({
     orderBy: { createdAt: 'desc' },
   });
 
+  // ── Customer Revenue Leaderboard ──
+  const topRevenueRows = await prisma.invoice.groupBy({
+    by: ['customerId'],
+    where: { organizationId, status: 'PAID' },
+    _sum: { total: true },
+    _count: { _all: true },
+    orderBy: { _sum: { total: 'desc' } },
+    take: 10,
+  });
+
+  const revCustomerIds = topRevenueRows.map((r) => r.customerId);
+  const revCustomerNames = revCustomerIds.length > 0
+    ? await prisma.customer.findMany({
+        where: { id: { in: revCustomerIds } },
+        select: { id: true, name: true },
+      })
+    : [];
+  const revNameMap = new Map(revCustomerNames.map((c) => [c.id, c.name]));
+  const customerRevenueData = topRevenueRows.map((r) => ({
+    name: revNameMap.get(r.customerId) ?? 'Unknown',
+    revenue: Number(r._sum.total ?? 0),
+    invoiceCount: r._count._all,
+  }));
+
   return (
     <div className="p-8 max-w-6xl mx-auto w-full space-y-8 animate-in fade-in duration-700">
       {/* Header */}
@@ -37,6 +62,9 @@ export default async function CustomersPage({
         </div>
         <CustomerModal />
       </div>
+
+      {/* Revenue Leaderboard Chart */}
+      <CustomerRevenueChart data={customerRevenueData} />
 
       {/* Toolbar */}
       <form method="GET" className="flex flex-col md:flex-row gap-4 items-center justify-between">

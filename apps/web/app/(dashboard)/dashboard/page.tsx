@@ -11,11 +11,22 @@ import {
   CheckCircle2,
   AlertCircle
 } from 'lucide-react';
+import { DashboardCharts } from './_components/DashboardCharts';
+
+const STATUS_COLORS: Record<string, string> = {
+  DRAFT: '#94a3b8',
+  SENT: '#3b82f6',
+  PARTIALLY_PAID: '#f59e0b',
+  PAID: '#10b981',
+  OVERDUE: '#ef4444',
+  CANCELLED: '#6b7280',
+};
 
 export default async function DashboardPage() {
   const user = await requireAuth();
   const organizationId = user.ownedOrgs[0]?.id;
 
+  // ── Core queries (existing) ──
   const [invoiceCount, customerCount, recentInvoices, revenueResult, pendingInvoices, paymentsResult] = await Promise.all([
     prisma.invoice.count({ where: { organizationId } }),
     prisma.customer.count({ where: { organizationId } }),
@@ -46,6 +57,75 @@ export default async function DashboardPage() {
       _sum: { amount: true }
     })
   ]);
+
+  // ── Chart data queries ──
+  const sixMonthsAgo = new Date();
+  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+  sixMonthsAgo.setDate(1);
+  sixMonthsAgo.setHours(0, 0, 0, 0);
+
+  const [paidInvoices, statusGroups, topCustomerRows] = await Promise.all([
+    // Monthly revenue: sum of paid invoice totals in last 6 months
+    prisma.invoice.findMany({
+      where: {
+        organizationId,
+        status: 'PAID',
+        issueDate: { gte: sixMonthsAgo },
+      },
+      select: { issueDate: true, total: true },
+    }),
+    // Invoice status breakdown
+    prisma.invoice.groupBy({
+      by: ['status'],
+      where: { organizationId },
+      _count: { _all: true },
+    }),
+    // Top 5 customers by paid invoice value
+    prisma.invoice.groupBy({
+      by: ['customerId'],
+      where: { organizationId, status: 'PAID' },
+      _sum: { total: true },
+      orderBy: { _sum: { total: 'desc' } },
+      take: 5,
+    }),
+  ]);
+
+  // Aggregate paid invoices into monthly buckets
+  const monthBuckets = new Map<string, number>();
+  for (let i = 0; i < 6; i++) {
+    const d = new Date();
+    d.setMonth(d.getMonth() - (5 - i));
+    const key = d.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
+    monthBuckets.set(key, 0);
+  }
+  for (const inv of paidInvoices) {
+    const d = new Date(inv.issueDate);
+    const key = d.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
+    if (monthBuckets.has(key)) {
+      monthBuckets.set(key, (monthBuckets.get(key) ?? 0) + Number(inv.total));
+    }
+  }
+  const revenueData = Array.from(monthBuckets, ([month, revenue]) => ({ month, revenue }));
+
+  // Invoice status data
+  const statusData = (['DRAFT', 'SENT', 'PARTIALLY_PAID', 'PAID', 'OVERDUE', 'CANCELLED'] as const).map((status) => {
+    const group = statusGroups.find((g) => g.status === status);
+    return { status, count: group?._count._all ?? 0, color: STATUS_COLORS[status] ?? '#94a3b8' };
+  }).filter((d) => d.count > 0);
+
+  // Top customers — resolve names
+  const customerIds = topCustomerRows.map((r) => r.customerId);
+  const customerNames = customerIds.length > 0
+    ? await prisma.customer.findMany({
+        where: { id: { in: customerIds } },
+        select: { id: true, name: true },
+      })
+    : [];
+  const nameMap = new Map(customerNames.map((c) => [c.id, c.name]));
+  const topCustomers = topCustomerRows.map((r) => ({
+    name: nameMap.get(r.customerId) ?? 'Unknown',
+    revenue: Number(r._sum.total ?? 0),
+  }));
 
   const totalRevenue = Number(revenueResult._sum.amount ?? 0);
   const pendingRevenue = Number(pendingInvoices._sum.total ?? 0) - Number(paymentsResult._sum.amount ?? 0);
@@ -107,6 +187,13 @@ export default async function DashboardPage() {
           </div>
         ))}
       </div>
+
+      {/* Revenue Analytics Charts */}
+      <DashboardCharts
+        revenueData={revenueData}
+        statusData={statusData}
+        topCustomers={topCustomers}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Recent Invoices Table */}
