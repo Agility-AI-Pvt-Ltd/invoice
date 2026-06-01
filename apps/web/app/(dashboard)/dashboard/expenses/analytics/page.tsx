@@ -280,7 +280,17 @@ useEffect(() => {
     const avgIncome = totalIncome / periods.length;
     return { totalIncome, totalExpenses, netSavings, savingsRate, avgExpenses, avgIncome, maxExpense, maxExpensePeriod };
   }, [periods]);
-
+// ── Client‑side expense statistics for anomaly detection
+const expenseStats = useMemo(() => {
+  if (periods.length === 0) return null;
+  const values = periods.map(p => p.expenses);
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const variance = values.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / values.length;
+  const stdDev = Math.sqrt(variance);
+  const upper = mean + 2 * stdDev;
+  const min = Math.min(...values);
+  return { mean, stdDev, upper, min, avg: mean, max: upper };
+}, [periods]);
   // ── Chart data for trend ──
   const chartData = useMemo(() =>
     periods.map((p) => ({ period: p.period, income: p.income, expenses: p.expenses, net: p.income - p.expenses })),
@@ -464,18 +474,25 @@ useEffect(() => {
           )}
 
           {/* ── Dynamic Anomaly Thresholds ── */}
-          {anomalyData && (() => {
-            const { min, avg, max } = anomalyData.range;
-            const useCustom = anomalyData.customAnomalyThreshold != null;
-            const activeUpperLimit = useCustom ? anomalyData.customAnomalyThreshold! : max;
-            
-            // Calculate proportional widths for the bar based on the active upper limit
-            const totalRange = Math.max(activeUpperLimit * 1.3, avg + (activeUpperLimit - avg) * 1.5) || 1;
-            const normalPct = Math.min(95, Math.max(20, (activeUpperLimit / totalRange) * 100));
-            const avgPct = Math.min(normalPct - 2, Math.max(5, (avg / totalRange) * 100));
+          {/* ── Dynamic Anomaly Thresholds ── */}
+{(anomalyData || expenseStats) && (() => {
+  // Use client‑calculated stats if available, otherwise fall back to server data
+  const stats = expenseStats || (anomalyData ? { min: anomalyData.range.min, avg: anomalyData.range.avg, max: anomalyData.range.max } : null);
+  if (!stats) return null;
+  const { min, avg, max } = stats;
+  const useCustom = anomalyData?.customAnomalyThreshold != null;
+  const activeUpperLimit = useCustom ? anomalyData!.customAnomalyThreshold! : max;
+
+  // Calculate proportional widths for the bar based on the active upper limit
+  const totalRange = Math.max(activeUpperLimit * 1.3, avg + (activeUpperLimit - avg) * 1.5) || 1;
+  const normalPct = Math.min(95, Math.max(20, (activeUpperLimit / totalRange) * 100));
+  const avgPct = Math.min(normalPct - 2, Math.max(5, (avg / totalRange) * 100));
+
+// Duplicate stats block removed
+
             
             // Count anomalous invoices using the active limit
-            const anomalyCount = anomalyData.trends?.filter?.((t: any) => t.amount > activeUpperLimit)?.length ?? 0;
+            const anomalyCount = anomalyData?.trends?.filter?.((t: any) => t.amount > activeUpperLimit)?.length ?? 0;
 
             return (
             <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
