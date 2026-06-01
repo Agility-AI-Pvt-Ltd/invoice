@@ -85,7 +85,7 @@ export default function AuthLayout({
                 RS
               </div>
               <div>
-                <p className="text-xs font-bold">Ryan Shukla</p>
+                <p className="text-xs font-bold">Sharad Raj Utsav</p>
                 <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">
                   Founder, Agility AI
                 </p>
