@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import InvoiceActions from './InvoiceActions';
 
-const fmt = (n: number | any) => `₹${Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const fmt = (n: number | any) => `₹${(Number(n) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default async function InvoiceViewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -30,8 +30,10 @@ export default async function InvoiceViewPage({ params }: { params: Promise<{ id
   
   // If we have explicit tax values, use them. Otherwise, fall back to state-code detection.
   const isInterState = hasIgst ? true : hasCgst ? false : (!!orgState && !!supplyState && orgState !== supplyState);
-  const totalPaid = invoice.payments.reduce((s, p) => s + Number(p.amount), 0);
-  const remaining = Number(invoice.total) - totalPaid;
+  const totalPaidPaise = invoice.payments.reduce((s, p) => s + Number(p.amount), 0);
+  const totalPaid = totalPaidPaise / 100;
+  const totalInRupees = Number(invoice.total) / 100;
+  const remaining = totalInRupees - totalPaid;
   const template = (invoice.organization as any).defaultTemplate || 'modern';
 
   return (
@@ -61,7 +63,7 @@ export default async function InvoiceViewPage({ params }: { params: Promise<{ id
         <InvoiceActions
           invoiceId={invoice.id}
           status={invoice.status as any}
-          total={Number(invoice.total)}
+          total={totalInRupees}
           paid={totalPaid}
           defaultTemplate={template}
           cancelRemark={invoice.cancelRemark}
@@ -106,7 +108,7 @@ export default async function InvoiceViewPage({ params }: { params: Promise<{ id
               <p className={`text-sm font-bold uppercase tracking-widest ${remaining <= 0 ? "text-green-600" : "text-amber-600"}`}>
                 {remaining <= 0 ? "Fully Paid" : "Partially Paid"}
               </p>
-              <p className="text-muted-foreground text-xs font-medium">₹{totalPaid.toLocaleString('en-IN')} collected so far</p>
+              <p className="text-muted-foreground text-xs font-medium">₹{totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} collected so far</p>
             </div>
           </div>
           {remaining > 0 && (

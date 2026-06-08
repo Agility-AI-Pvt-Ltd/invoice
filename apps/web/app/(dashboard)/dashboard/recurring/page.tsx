@@ -85,7 +85,7 @@ export default async function RecurringInvoicesPage({
         <div className="bg-card border border-border p-6 rounded-[2rem] shadow-sm relative overflow-hidden group text-primary">
           <div className="absolute inset-0 bg-primary/5 pointer-events-none" />
           <p className="text-[10px] font-bold uppercase tracking-widest mb-1 opacity-70">Total ARR Value</p>
-          <p className="text-3xl font-black">₹{recurringInvoices.reduce((acc, r) => acc + (Number(r.total) * (r.interval === 'MONTHLY' ? 12 : r.interval === 'WEEKLY' ? 52 : 1)), 0).toLocaleString('en-IN')}</p>
+          <p className="text-3xl font-black">₹{(recurringInvoices.reduce((acc, r) => acc + (Number(r.total) * (r.interval === 'MONTHLY' ? 12 : r.interval === 'WEEKLY' ? 52 : 1)), 0) / 100).toLocaleString('en-IN')}</p>
         </div>
       </div>
 
@@ -131,7 +131,7 @@ export default async function RecurringInvoicesPage({
                       </div>
                     </td>
                     <td className="px-8 py-6 font-bold text-foreground">
-                      ₹{Number(recurring.total).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      ₹{(Number(recurring.total) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                     </td>
                     <td className="px-8 py-6">
                       <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-secondary rounded-lg text-[10px] font-black uppercase tracking-widest text-muted-foreground border border-border/50">

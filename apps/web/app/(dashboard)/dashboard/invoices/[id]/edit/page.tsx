@@ -24,7 +24,11 @@ export default async function EditInvoicePage({ params }: { params: Promise<{ id
       where: { organizationId },
       select: { id: true, name: true, price: true, hsnCode: true, taxRate: true, productKind: true },
       orderBy: { name: 'asc' },
-    }),
+    }).then(products => products.map(p => ({
+      ...p,
+      price: p.price / 100,
+      taxRate: p.taxRate.toNumber()
+    }))),
     prisma.organization.findUnique({ where: { id: organizationId } }),
   ]);
 
@@ -65,9 +69,9 @@ export default async function EditInvoicePage({ params }: { params: Promise<{ id
       description: item.description,
       hsnCode: item.hsnCode || '',
       quantity: Number(item.quantity),
-      unitPrice: Number(item.unitPrice),
+      unitPrice: Number(item.unitPrice) / 100,
       taxRate: Number(item.taxRate),
-      discount: Number((item as any).discount || 0),
+      discount: Number(item.discount) / 100,
     })),
   };
 

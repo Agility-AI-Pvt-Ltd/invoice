@@ -96,8 +96,8 @@ export async function PATCH(
       | {
           description: string;
           hsnCode: string | null;
-          quantity: number;
-          unitPrice: number;
+          quantity: string;
+          unitPrice: string;
           taxRate: Prisma.Decimal;
           cgstAmount: Prisma.Decimal;
           sgstAmount: Prisma.Decimal;

@@ -394,7 +394,7 @@ export default function EditRecurringForm({
           <div>
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Subtotal</p>
             <p className="text-lg font-black text-foreground">
-              ₹{totals.subTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+              ₹{Number(totals.subTotal).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
             </p>
           </div>
           {!isInterState && (
@@ -402,13 +402,13 @@ export default function EditRecurringForm({
               <div>
                 <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">CGST</p>
                 <p className="text-lg font-black text-foreground">
-                  ₹{totals.cgstTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                  ₹{Number(totals.cgstTotal).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                 </p>
               </div>
               <div>
                 <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">SGST</p>
                 <p className="text-lg font-black text-foreground">
-                  ₹{totals.sgstTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                  ₹{Number(totals.sgstTotal).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                 </p>
               </div>
             </>
@@ -417,14 +417,14 @@ export default function EditRecurringForm({
             <div>
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">IGST</p>
               <p className="text-lg font-black text-foreground">
-                ₹{totals.igstTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                ₹{Number(totals.igstTotal).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
               </p>
             </div>
           )}
           <div className="col-span-2 md:col-span-1 text-right">
             <p className="text-[10px] font-bold text-primary uppercase tracking-widest mb-1">Total</p>
             <p className="text-2xl font-black text-primary">
-              ₹{totals.grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+              ₹{Number(totals.grandTotal).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
             </p>
           </div>
         </div>

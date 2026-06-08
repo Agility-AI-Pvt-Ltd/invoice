@@ -2,11 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import {
   ArrowDownRight,
-  ArrowUpRight,
-  DollarSign,
   Flame,
   ChevronRight,
   Plus,
@@ -15,10 +12,10 @@ import {
 import type { ExpenseDashboardSummary } from "@/lib/expenses/summary";
 import { amountsToBreakdownRows } from "@/lib/expenses/breakdown";
 import { ExpenseStatCard } from "./ExpenseStatCard";
-import { IncomeExpenseChart } from "./IncomeExpenseChart";
 import { ExpenseBreakdownList } from "./ExpenseBreakdownList";
 import { formatInr, formatInrSigned } from "../_lib/format";
 import { AddLedgerEntryDialog } from "./AddLedgerEntryDialog";
+import { ExpensesOnlyChart } from "./ExpensesOnlyChart";
 
 function trendLine(pct: number | null, invertGood?: boolean): { text?: string; trendUp?: boolean } {
   if (pct === null) return {};
@@ -36,11 +33,11 @@ export function ExpenseOverviewClient({
   const router = useRouter();
   const [addOpen, setAddOpen] = useState(false);
 
+  // Only expenses for the chart
   const chartData = useMemo(
     () =>
       summary.chartMonths.map((m) => ({
         month: m.label,
-        income: m.income,
         expenses: m.expenses,
       })),
     [summary.chartMonths],
@@ -48,9 +45,10 @@ export function ExpenseOverviewClient({
 
   const breakdownRows = amountsToBreakdownRows(summary.expenseBreakdown);
 
-  const incomeTrend = trendLine(summary.trends.incomePct, false);
   const expenseTrend = trendLine(summary.trends.expensePct, true);
-  const netTrend = trendLine(summary.trends.netPct, false);
+
+  // Only show expense transactions
+  const expenseTransactions = summary.recent.filter((tx) => tx.kind === "EXPENSE");
 
   async function deleteEntry(id: string) {
     if (!confirm("Delete this ledger entry?")) return;
@@ -72,7 +70,7 @@ export function ExpenseOverviewClient({
           className="inline-flex items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3 text-sm font-bold text-primary-foreground shadow-lg shadow-primary/25 hover:opacity-90 sm:w-auto"
         >
           <Plus className="h-4 w-4" aria-hidden />
-          Add income / expense
+          Add expense
         </button>
       </div>
 
@@ -83,27 +81,14 @@ export function ExpenseOverviewClient({
         onSaved={() => router.refresh()}
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <ExpenseStatCard
-          icon={ArrowUpRight}
-          label="Total income"
-          value={formatInr(summary.currentMonth.income)}
-          trend={incomeTrend.text}
-          trendUp={incomeTrend.trendUp}
-        />
+      {/* Expense-only stat cards */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <ExpenseStatCard
           icon={ArrowDownRight}
           label="Total expenses"
           value={formatInr(summary.currentMonth.expenses)}
           trend={expenseTrend.text}
           trendUp={expenseTrend.trendUp}
-        />
-        <ExpenseStatCard
-          icon={DollarSign}
-          label="Net profit"
-          value={formatInr(summary.currentMonth.net)}
-          trend={netTrend.text}
-          trendUp={netTrend.trendUp}
         />
         <ExpenseStatCard
           icon={Flame}
@@ -114,20 +99,22 @@ export function ExpenseOverviewClient({
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
+        {/* Expenses trend chart */}
         <section className="xl:col-span-3 rounded-2xl border border-border bg-card p-6 shadow-sm">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-lg font-bold tracking-tight text-foreground heading-display">
-              Income vs expenses
+              Expenses over time
             </h2>
             <span className="inline-flex w-fit items-center rounded-full border border-border bg-muted/50 px-3 py-1 text-xs font-semibold text-muted-foreground">
               Last 6 months (UTC)
             </span>
           </div>
           <div className="mt-6">
-            <IncomeExpenseChart data={chartData} />
+            <ExpensesOnlyChart data={chartData} />
           </div>
         </section>
 
+        {/* Expense breakdown */}
         <section className="xl:col-span-2 rounded-2xl border border-border bg-card p-6 shadow-sm">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-lg font-bold tracking-tight text-foreground heading-display">
@@ -149,34 +136,35 @@ export function ExpenseOverviewClient({
         </section>
       </div>
 
+      {/* Recent expense transactions only */}
       <section className="rounded-2xl border border-border bg-card shadow-sm">
         <div className="flex flex-col gap-4 border-b border-border px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-lg font-bold tracking-tight text-foreground heading-display">
-            Recent transactions
+            Recent expenses
           </h2>
-          <Link
+          <a
             href="/dashboard/expenses/analytics"
             className="inline-flex items-center gap-1 text-sm font-semibold text-primary hover:underline"
           >
             Reports
             <ChevronRight className="h-4 w-4" aria-hidden />
-          </Link>
+          </a>
         </div>
-        {summary.recent.length === 0 ? (
+        {expenseTransactions.length === 0 ? (
           <div className="px-6 py-12 text-center text-sm text-muted-foreground">
-            No transactions yet. Use{" "}
+            No expense transactions yet. Use{" "}
             <button
               type="button"
               className="font-semibold text-primary underline-offset-2 hover:underline"
               onClick={() => setAddOpen(true)}
             >
-              Add income / expense
+              Add expense
             </button>{" "}
             to start tracking.
           </div>
         ) : (
           <ul className="divide-y divide-border">
-            {summary.recent.map((tx) => {
+            {expenseTransactions.map((tx) => {
               const txDate = new Date(tx.occurredAt);
               const meta = `${tx.category} · ${txDate.toLocaleDateString("en-IN", {
                 month: "short",
@@ -184,16 +172,7 @@ export function ExpenseOverviewClient({
                 timeZone: "UTC",
               })}`;
               const title =
-                tx.description?.trim() ||
-                (tx.kind === "INCOME"
-                  ? `Income — ${tx.category}`
-                  : `Expense — ${tx.category}`);
-              const signed = tx.kind === "INCOME" ? tx.amount : -tx.amount;
-              const typeLabel = tx.kind === "INCOME" ? "Income" : "Expense";
-              const accent =
-                tx.kind === "INCOME"
-                  ? "bg-green-500/15 text-green-600 dark:text-green-400"
-                  : "bg-orange-500/15 text-orange-600 dark:text-orange-400";
+                tx.description?.trim() || `Expense — ${tx.category}`;
 
               return (
                 <li
@@ -202,12 +181,10 @@ export function ExpenseOverviewClient({
                 >
                   <div className="flex min-w-0 flex-1 items-start gap-4">
                     <div
-                      className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${accent}`}
+                      className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-500/15 text-orange-600 dark:text-orange-400"
                       aria-hidden
                     >
-                      <span className="text-xs font-bold">
-                        {tx.kind === "INCOME" ? "↑" : "↓"}
-                      </span>
+                      <span className="text-xs font-bold">↓</span>
                     </div>
                     <div className="min-w-0">
                       <p className="font-semibold text-foreground">{title}</p>
@@ -215,25 +192,21 @@ export function ExpenseOverviewClient({
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2 sm:justify-end">
-                    <button
-                      type="button"
-                      onClick={() => deleteEntry(tx.id)}
-                      className="rounded-xl border border-border p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                      aria-label="Delete entry"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                    <span className="rounded-full bg-primary/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-primary">
-                      {typeLabel}
+                    {!tx.isPayment && (
+                      <button
+                        type="button"
+                        onClick={() => deleteEntry(tx.id)}
+                        className="rounded-xl border border-border p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                        aria-label="Delete entry"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                    <span className="rounded-full bg-orange-500/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-orange-600 dark:text-orange-400">
+                      Expense
                     </span>
-                    <span
-                      className={`min-w-[6.5rem] text-right text-sm font-bold tabular-nums ${
-                        signed >= 0
-                          ? "text-green-600 dark:text-green-400"
-                          : "text-orange-600 dark:text-orange-400"
-                      }`}
-                    >
-                      {formatInrSigned(signed)}
+                    <span className="min-w-[6.5rem] text-right text-sm font-bold tabular-nums text-orange-600 dark:text-orange-400">
+                      {formatInrSigned(-tx.amount)}
                     </span>
                   </div>
                 </li>

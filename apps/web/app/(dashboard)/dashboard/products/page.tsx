@@ -23,7 +23,11 @@ export default async function ProductsPage({
       ] : undefined
     },
     orderBy: { createdAt: 'desc' },
-  });
+  }).then(products => products.map(p => ({
+    ...p,
+    price: p.price,
+    taxRate: p.taxRate.toNumber()
+  })));
 
   return (
     <div className="p-8 max-w-6xl mx-auto w-full space-y-8 animate-in fade-in duration-700">
@@ -103,7 +107,7 @@ export default async function ProductsPage({
                       </span>
                     </td>
                     <td className="px-8 py-6 font-bold text-foreground">
-                      ₹{Number(p.price).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      ₹{(Number(p.price) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                     </td>
                     <td className="px-8 py-6">
                       <div className="flex items-center gap-2">

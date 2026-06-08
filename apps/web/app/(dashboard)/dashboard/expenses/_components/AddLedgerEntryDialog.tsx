@@ -46,7 +46,7 @@ export function AddLedgerEntryDialog({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    const amt = Number.parseFloat(amount);
+    const amt = Math.round(Number.parseFloat(amount) * 100);
     if (!category.trim()) {
       setError("Choose or enter a category.");
       return;

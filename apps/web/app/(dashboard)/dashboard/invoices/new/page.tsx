@@ -31,7 +31,11 @@ export default async function NewInvoicePage() {
         productKind: true,
       },
       orderBy: { name: "asc" },
-    }),
+    }).then(products => products.map(p => ({
+      ...p,
+      price: Number(p.price) / 100,
+      taxRate: Number(p.taxRate)
+    }))),
     prisma.organization.findUnique({ where: { id: organizationId } }),
     prisma.invoice.findFirst({
       where: { organizationId },

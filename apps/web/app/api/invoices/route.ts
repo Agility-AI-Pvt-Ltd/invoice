@@ -105,14 +105,29 @@ export async function POST(request: Request) {
         });
       }
 
-      // 2b. Auto-save Products
+      // 2b. Auto-save Products (Batch query matching names first to minimize roundtrips)
+      const itemDescriptions = items
+        .map((i: any) => i.description?.trim())
+        .filter((desc: any): desc is string => !!desc);
+
+      const existingProducts = itemDescriptions.length > 0
+        ? await tx.product.findMany({
+            where: {
+              organizationId: organization.id,
+              name: { in: itemDescriptions, mode: "insensitive" },
+            },
+          })
+        : [];
+
+      const existingProductMap = new Map(
+        existingProducts.map((p) => [p.name.toLowerCase(), p])
+      );
+
       for (const item of items) {
         if (item.description) {
-          const exists = await tx.product.findFirst({
-            where: { organizationId: organization.id, name: item.description },
-          });
-          if (!exists) {
-            await tx.product.create({
+          const descLower = item.description.trim().toLowerCase();
+          if (!existingProductMap.has(descLower)) {
+            const newProduct = await tx.product.create({
               data: {
                 organizationId: organization.id,
                 name: item.description,
@@ -121,6 +136,7 @@ export async function POST(request: Request) {
                 taxRate: Number(item.taxRate) || 0,
               },
             });
+            existingProductMap.set(descLower, newProduct);
           }
         }
       }
@@ -181,6 +197,9 @@ export async function POST(request: Request) {
       });
 
       return invoice;
+    }, {
+      maxWait: 10000,
+      timeout: 30000,
     });
 
     logger.info(context, "Invoice created successfully", { invoiceId: result.id, invoiceNumber });

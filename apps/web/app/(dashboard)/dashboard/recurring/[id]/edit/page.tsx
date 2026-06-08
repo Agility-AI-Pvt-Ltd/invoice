@@ -65,8 +65,8 @@ export default async function EditRecurringPage({
       id: item.id,
       description: item.description,
       hsnCode: item.hsnCode,
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
+      quantity: Number(item.quantity),
+      unitPrice: Number(item.unitPrice) / 100,
       taxRate: Number(item.taxRate),
     })),
   };

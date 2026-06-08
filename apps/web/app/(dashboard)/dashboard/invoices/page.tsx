@@ -186,7 +186,7 @@ export default async function InvoicesPage({
                     <span className="text-muted-foreground font-medium">{new Date(inv.issueDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
                   </td>
                   <td className="px-6 py-5">
-                    <span className="font-bold text-foreground">₹{Number(inv.total).toLocaleString('en-IN')}</span>
+                    <span className="font-bold text-foreground">₹{(Number(inv.total) / 100).toLocaleString('en-IN')}</span>
                   </td>
                   <td className="px-6 py-5 text-center">
                     <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${STATUS_STYLES[inv.status] || STATUS_STYLES.DRAFT}`}>

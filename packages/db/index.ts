@@ -10,6 +10,12 @@ const globalForPrisma = globalThis as unknown as {
 function createPrismaClient() {
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
+    // Neon PgBouncer (transaction mode): keep pool small to avoid
+    // stale connections and "Authentication timed out" errors.
+    max: 1,
+    idleTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 15_000,
+    allowExitOnIdle: false,
   });
 
   const adapter = new PrismaPg(pool);

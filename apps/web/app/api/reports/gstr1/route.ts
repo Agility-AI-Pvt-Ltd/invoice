@@ -69,11 +69,11 @@ export async function GET(req: Request) {
       invoice_date: inv.issueDate.toLocaleDateString('en-IN'),
       place_of_supply: inv.placeOfSupply,
       supply_type: isInterState ? 'Inter-State' : 'Intra-State',
-      taxable_value: inv.subTotal,
-      cgst: inv.cgstTotal,
-      sgst: inv.sgstTotal,
-      igst: inv.igstTotal,
-      invoice_value: inv.total,
+      taxable_value: Number(inv.subTotal) / 100,
+      cgst: Number(inv.cgstTotal) / 100,
+      sgst: Number(inv.sgstTotal) / 100,
+      igst: Number(inv.igstTotal) / 100,
+      invoice_value: Number(inv.total) / 100,
     };
 
     if (inv.customer.gstin) {
@@ -95,11 +95,11 @@ export async function GET(req: Request) {
     legal_name: organization.name,
     period: monthParam,
     total_invoices: invoices.length,
-    total_taxable_value: invoices.reduce((s, i) => s + Number(i.subTotal), 0),
-    total_cgst: invoices.reduce((s, i) => s + Number(i.cgstTotal), 0),
-    total_sgst: invoices.reduce((s, i) => s + Number(i.sgstTotal), 0),
-    total_igst: invoices.reduce((s, i) => s + Number(i.igstTotal), 0),
-    total_invoice_value: invoices.reduce((s, i) => s + Number(i.total), 0),
+    total_taxable_value: invoices.reduce((s, i) => s + Number(i.subTotal), 0) / 100,
+    total_cgst: invoices.reduce((s, i) => s + Number(i.cgstTotal), 0) / 100,
+    total_sgst: invoices.reduce((s, i) => s + Number(i.sgstTotal), 0) / 100,
+    total_igst: invoices.reduce((s, i) => s + Number(i.igstTotal), 0) / 100,
+    total_invoice_value: invoices.reduce((s, i) => s + Number(i.total), 0) / 100,
   };
 
   if (format === 'csv') {

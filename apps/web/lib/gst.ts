@@ -10,9 +10,9 @@ export interface GSTResult {
 export interface ProcessedItem {
   description: string;
   hsnCode: string | null;
-  quantity: number;
-  unitPrice: number;
-  taxRate: number;
+  quantity: string;
+  unitPrice: string;
+  taxRate: string;
   cgstAmount: number;
   sgstAmount: number;
   igstAmount: number;
@@ -70,9 +70,9 @@ export function computeInvoiceTotals(items: LineInput[], isInterState: boolean):
 
   const processedItems: ProcessedItem[] = items.map((item) => {
     const qty = new Decimal(Number(item.quantity) || 0);
-    const price = new Decimal(Number(item.unitPrice) || 0);
+    const price = new Decimal(Number(item.unitPrice) || 0).times(100).toDecimalPlaces(0);
     const taxRate = Number(item.taxRate) || 0;
-    const disc = new Decimal(Number(item.discount) || 0);
+    const disc = new Decimal(Number(item.discount) || 0).times(100).toDecimalPlaces(0);
     
     const itemSub = qty.times(price);
     const taxableAmount = itemSub.minus(disc);
@@ -89,14 +89,14 @@ export function computeInvoiceTotals(items: LineInput[], isInterState: boolean):
     return {
       description: item.description,
       hsnCode: (item.hsnCode as string) || null,
-      quantity: qty.toNumber(),
-      unitPrice: price.toNumber(),
-      taxRate,
-      cgstAmount: taxes.cgst.toNumber(),
-      sgstAmount: taxes.sgst.toNumber(),
-      igstAmount: taxes.igst.toNumber(),
-      discount: disc.toNumber(),
-      total: itemTotal.toNumber(),
+      quantity: qty.toDecimalPlaces(4).toString(),
+      unitPrice: price.toDecimalPlaces(0).toNumber(),
+      taxRate: new Decimal(taxRate).toDecimalPlaces(2).toString(),
+      cgstAmount: taxes.cgst.toDecimalPlaces(0).toNumber(),
+      sgstAmount: taxes.sgst.toDecimalPlaces(0).toNumber(),
+      igstAmount: taxes.igst.toDecimalPlaces(0).toNumber(),
+      discount: disc.toDecimalPlaces(0).toNumber(),
+      total: itemTotal.toDecimalPlaces(0).toNumber(),
       productId: item.productId ?? null,
     };
   });
@@ -104,12 +104,12 @@ export function computeInvoiceTotals(items: LineInput[], isInterState: boolean):
   const grandTotal = subTotal.minus(discountTotal).plus(cgstTotal).plus(sgstTotal).plus(igstTotal);
 
   return {
-    subTotal: subTotal.toNumber(),
-    cgstTotal: cgstTotal.toNumber(),
-    sgstTotal: sgstTotal.toNumber(),
-    igstTotal: igstTotal.toNumber(),
-    discountTotal: discountTotal.toNumber(),
-    grandTotal: grandTotal.toNumber(),
+    subTotal: subTotal.toDecimalPlaces(0).toNumber(),
+    cgstTotal: cgstTotal.toDecimalPlaces(0).toNumber(),
+    sgstTotal: sgstTotal.toDecimalPlaces(0).toNumber(),
+    igstTotal: igstTotal.toDecimalPlaces(0).toNumber(),
+    discountTotal: discountTotal.toDecimalPlaces(0).toNumber(),
+    grandTotal: grandTotal.toDecimalPlaces(0).toNumber(),
     processedItems,
   };
 }

@@ -34,6 +34,7 @@ export type ExpenseDashboardSummary = {
     description: string | null;
     amount: number;
     occurredAt: string;
+    isPayment?: boolean;
   }[];
   burnPerDay: number;
 };
@@ -89,7 +90,7 @@ export async function computeExpenseSummary(
   const rangeStart = utcMonthBounds(oldestMonth.year, oldestMonth.month).start;
   const rangeEnd = utcMonthBounds(cy, cm).end;
 
-  const [ledgerRows, recent] = await Promise.all([
+  const [ledgerRows, recentLedger, invoiceRows, recentInvoices] = await Promise.all([
     prisma.expenseLedgerEntry.findMany({
       where: {
         organizationId,
@@ -113,6 +114,37 @@ export async function computeExpenseSummary(
         description: true,
         amount: true,
         occurredAt: true,
+      },
+    }),
+    prisma.invoice.findMany({
+      where: {
+        organizationId,
+        issueDate: { gte: rangeStart, lte: rangeEnd },
+        status: { not: "CANCELLED" },
+      },
+      select: {
+        total: true,
+        issueDate: true,
+        invoiceNumber: true,
+      },
+    }),
+    prisma.invoice.findMany({
+      where: {
+        organizationId,
+        status: { not: "CANCELLED" },
+      },
+      orderBy: { issueDate: "desc" },
+      take: 15,
+      select: {
+        id: true,
+        total: true,
+        issueDate: true,
+        invoiceNumber: true,
+        customer: {
+          select: {
+            name: true,
+          },
+        },
       },
     }),
   ]);
@@ -167,6 +199,29 @@ export async function computeExpenseSummary(
     }
   }
 
+  for (const row of invoiceRows) {
+    const amt = Number(row.total);
+    const k = monthKeyFromDate(new Date(row.issueDate));
+    const bucket = chartMap.get(k);
+    if (bucket) {
+      bucket.income += amt;
+    }
+
+    const t = new Date(row.issueDate).getTime();
+    if (t >= curBounds.start.getTime() && t <= curBounds.end.getTime()) {
+      curIncome += amt;
+      const category = "Invoices";
+      incomeCategoryMonth.set(
+        category,
+        (incomeCategoryMonth.get(category) ?? 0) + amt,
+      );
+    }
+
+    if (t >= prevBounds.start.getTime() && t <= prevBounds.end.getTime()) {
+      prevIncome += amt;
+    }
+  }
+
   const chartMonths = sixMonths.map(({ year, month, label }) => {
     const key = `${year}-${String(month).padStart(2, "0")}`;
     const b = chartMap.get(key) ?? { income: 0, expenses: 0 };
@@ -183,6 +238,29 @@ export async function computeExpenseSummary(
 
   const dim = daysInUtcMonth(cy, cm);
   const burnPerDay = dim > 0 ? Math.round((curExpense / dim) * 100) / 100 : 0;
+
+  const combinedRecent = [
+    ...recentLedger.map((r) => ({
+      id: r.id,
+      kind: r.kind,
+      category: r.category,
+      description: r.description,
+      amount: Number(r.amount),
+      occurredAt: r.occurredAt,
+      isPayment: false,
+    })),
+    ...recentInvoices.map((inv) => ({
+      id: inv.id,
+      kind: "INCOME" as const,
+      category: "Invoices",
+      description: `Invoice #${inv.invoiceNumber} (${inv.customer.name})`,
+      amount: Number(inv.total),
+      occurredAt: inv.issueDate,
+      isPayment: true,
+    })),
+  ]
+    .sort((a, b) => b.occurredAt.getTime() - a.occurredAt.getTime())
+    .slice(0, 15);
 
   return {
     chartMonths,
@@ -205,13 +283,14 @@ export async function computeExpenseSummary(
     },
     expenseBreakdown,
     incomeByCategory,
-    recent: recent.map((r) => ({
+    recent: combinedRecent.map((r) => ({
       id: r.id,
       kind: r.kind,
       category: r.category,
       description: r.description,
-      amount: Number(r.amount),
+      amount: r.amount,
       occurredAt: r.occurredAt.toISOString(),
+      isPayment: r.isPayment,
     })),
     burnPerDay,
   };

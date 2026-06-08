@@ -100,7 +100,7 @@ export default async function RecurringDetailPage({
 
         <div className="bg-card border border-border p-4 rounded-2xl">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Cycle Amount</p>
-          <p className="text-2xl font-black text-foreground">₹{Number(recurring.total).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+          <p className="text-2xl font-black text-foreground">₹{(Number(recurring.total) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
         </div>
       </div>
 
@@ -150,10 +150,10 @@ export default async function RecurringDetailPage({
                       {item.hsnCode && <p className="text-xs text-muted-foreground">HSN: {item.hsnCode}</p>}
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-right">{item.quantity}</td>
-                  <td className="px-6 py-4 text-right">₹{Number(item.unitPrice).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                  <td className="px-6 py-4 text-right">₹{(Number(item.cgstAmount) + Number(item.sgstAmount) + Number(item.igstAmount)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                  <td className="px-6 py-4 text-right font-bold">₹{Number(item.total).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                  <td className="px-6 py-4 text-right">{item.quantity.toString()}</td>
+                  <td className="px-6 py-4 text-right">₹{(Number(item.unitPrice) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                  <td className="px-6 py-4 text-right">₹{((Number(item.cgstAmount) + Number(item.sgstAmount) + Number(item.igstAmount)) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                  <td className="px-6 py-4 text-right font-bold">₹{(Number(item.total) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
                 </tr>
               ))}
             </tbody>
@@ -190,7 +190,7 @@ export default async function RecurringDetailPage({
                     <td className="px-6 py-4">
                       {new Date(inv.issueDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                     </td>
-                    <td className="px-6 py-4 font-bold">₹{Number(inv.total).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                    <td className="px-6 py-4 font-bold">₹{(Number(inv.total) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
                     <td className="px-6 py-4">
                       <span className={`inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase ${
                         inv.status === 'PAID'

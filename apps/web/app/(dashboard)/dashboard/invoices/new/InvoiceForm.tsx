@@ -1136,7 +1136,7 @@ export default function InvoiceForm({
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Subtotal</span>
                   <span className="font-semibold">
-                    ₹{totals.subTotal.toLocaleString("en-IN")}
+                    ₹{Number(totals.subTotal).toLocaleString("en-IN")}
                   </span>
                 </div>
 
@@ -1147,7 +1147,7 @@ export default function InvoiceForm({
                       Total Discount
                     </span>
                     <span>
-                      -₹{totals.discountTotal.toLocaleString("en-IN")}
+                      -₹{Number(totals.discountTotal).toLocaleString("en-IN")}
                     </span>
                   </div>
                 )}
@@ -1156,7 +1156,7 @@ export default function InvoiceForm({
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">IGST Total</span>
                     <span className="font-semibold">
-                      ₹{totals.igst.toLocaleString("en-IN")}
+                      ₹{Number(totals.igst).toLocaleString("en-IN")}
                     </span>
                   </div>
                 ) : (
@@ -1164,13 +1164,13 @@ export default function InvoiceForm({
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">CGST Total</span>
                       <span className="font-semibold">
-                        ₹{totals.cgst.toLocaleString("en-IN")}
+                        ₹{Number(totals.cgst).toLocaleString("en-IN")}
                       </span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">SGST Total</span>
                       <span className="font-semibold">
-                        ₹{totals.sgst.toLocaleString("en-IN")}
+                        ₹{Number(totals.sgst).toLocaleString("en-IN")}
                       </span>
                     </div>
                   </>
@@ -1179,7 +1179,7 @@ export default function InvoiceForm({
                 <div className="pt-4 border-t border-border flex justify-between">
                   <span className="text-base font-bold">Total Amount</span>
                   <span className="text-xl font-bold text-primary">
-                    ₹{totals.total.toLocaleString("en-IN")}
+                    ₹{Number(totals.total).toLocaleString("en-IN")}
                   </span>
                 </div>
               </div>
