@@ -11,7 +11,7 @@ export interface ProcessedItem {
   description: string;
   hsnCode: string | null;
   quantity: string;
-  unitPrice: string;
+  unitPrice: number;
   taxRate: string;
   cgstAmount: number;
   sgstAmount: number;
