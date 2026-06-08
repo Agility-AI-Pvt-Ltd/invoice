@@ -157,6 +157,16 @@ export default async function DashboardPage() {
     _sum: { total: true }
   });
   const totalRevenue = Number(totalRevenueResult._sum.total ?? 0);
+  // Compute total GST across all non-cancelled invoices
+  const gstResult = await prisma.invoice.aggregate({
+    where: {
+      organizationId,
+      status: { not: 'CANCELLED' }
+    },
+    _sum: { cgstTotal: true, sgstTotal: true, igstTotal: true }
+  });
+  const totalGst = (Number(gstResult._sum.cgstTotal ?? 0) + Number(gstResult._sum.sgstTotal ?? 0) + Number(gstResult._sum.igstTotal ?? 0));
+  const totalRevenueExclGst = totalRevenue - totalGst;
   const pendingRevenue = Number(pendingInvoices._sum.total ?? 0) - Number(paymentsResult._sum.amount ?? 0);
 
   // Expense summary data
@@ -164,6 +174,7 @@ export default async function DashboardPage() {
   const expExpenses = expenseSummary?.currentMonth.expenses ?? 0;
   const expNet = expenseSummary?.currentMonth.net ?? 0;
   const burnPerDay = expenseSummary?.burnPerDay ?? 0;
+const gstToPay = expenseSummary?.gstToPay ?? 0;
   const incomeTrend = trendLine(expenseSummary?.trends.incomePct ?? null, false);
   const expenseTrend = trendLine(expenseSummary?.trends.expensePct ?? null, true);
   const netTrend = trendLine(expenseSummary?.trends.netPct ?? null, false);
@@ -179,7 +190,7 @@ export default async function DashboardPage() {
   const invoiceStats = [
     { 
       label: "Total Revenue", 
-      value: `₹${(Number(totalRevenue) / 100).toLocaleString('en-IN')}`, 
+      value: `₹${(Number(totalRevenueExclGst) / 100).toLocaleString('en-IN')}`, 
       icon: CheckCircle2,
       color: "text-green-600",
       bg: "bg-green-500/10",
@@ -271,9 +282,8 @@ export default async function DashboardPage() {
           <div className="bg-card border border-rose-500/20 p-5 rounded-3xl shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all relative overflow-hidden group">
             <div className="absolute top-0 right-0 w-20 h-20 bg-rose-500/10 rounded-bl-full -mr-10 -mt-10 transition-transform group-hover:scale-125" />
             <Flame className="w-5 h-5 text-rose-500 mb-4" />
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Monthly Burn</p>
-            <p className="text-2xl font-bold mt-1 tracking-tight text-foreground">{formatInr(burnPerDay)}</p>
-            <p className="text-[10px] text-muted-foreground mt-1.5">avg. expense per day this month</p>
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Output GST</p>
+            <p className="text-2xl font-bold mt-1 tracking-tight text-foreground">{formatInr(gstToPay)}</p>
           </div>
         </div>
       </div>

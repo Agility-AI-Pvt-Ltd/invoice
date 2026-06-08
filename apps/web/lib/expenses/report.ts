@@ -14,17 +14,18 @@ export async function computeExpenseReport(
   const cy = now.getUTCFullYear();
   const rangeStart = new Date(Date.UTC(cy - 3, 0, 1));
 
-  const [ledgerRows, paymentRows] = await Promise.all([
+  const [ledgerRows, invoiceRows] = await Promise.all([
     prisma.expenseLedgerEntry.findMany({
       where: { organizationId, occurredAt: { gte: rangeStart } },
       select: { kind: true, amount: true, occurredAt: true },
     }),
-    prisma.payment.findMany({
+    prisma.invoice.findMany({
       where: {
-        invoice: { organizationId },
-        paymentDate: { gte: rangeStart },
+        organizationId,
+        issueDate: { gte: rangeStart },
+        status: { not: "CANCELLED" },
       },
-      select: { amount: true, paymentDate: true },
+      select: { total: true, issueDate: true, cgstTotal: true, sgstTotal: true, igstTotal: true },
     }),
   ]);
 
@@ -50,8 +51,8 @@ export async function computeExpenseReport(
     map.set(key, bucket);
   }
 
-  for (const row of paymentRows) {
-    const d = new Date(row.paymentDate);
+  for (const row of invoiceRows) {
+    const d = new Date(row.issueDate);
     const y = d.getUTCFullYear();
     const m = d.getUTCMonth() + 1;
     let key: string;
@@ -64,8 +65,9 @@ export async function computeExpenseReport(
       key = `${y}-${String(m).padStart(2, "0")}`;
     }
     const bucket = map.get(key) ?? { income: 0, expenses: 0 };
-    const amt = Number(row.amount);
-    bucket.income += amt;
+    const gst = Number(row.cgstTotal ?? 0) + Number(row.sgstTotal ?? 0) + Number(row.igstTotal ?? 0);
+    const baseAmt = Number(row.total ?? 0) - gst;
+    bucket.income += baseAmt;
     map.set(key, bucket);
   }
 
