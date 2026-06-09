@@ -12,10 +12,20 @@ function createPrismaClient() {
     connectionString: process.env.DATABASE_URL,
     // Neon PgBouncer (transaction mode): keep pool small to avoid
     // stale connections and "Authentication timed out" errors.
-    max: 1,
-    idleTimeoutMillis: 10_000,
-    connectionTimeoutMillis: 15_000,
+    // Increase slightly for resilience in dev where network can
+    // be flaky (Neon, TLS handshakes, etc.). Keep pool small
+    // but allow a couple concurrent connections.
+    max: 2,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 30_000,
+    keepAlive: true,
     allowExitOnIdle: false,
+    // TLS for hosted Postgres. Relax cert verification in local
+    // development to avoid provider certificate issues.
+    ssl:
+      process.env.NODE_ENV === "production"
+        ? undefined
+        : { rejectUnauthorized: false } as any,
   });
 
   const adapter = new PrismaPg(pool);

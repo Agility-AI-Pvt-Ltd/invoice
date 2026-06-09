@@ -37,6 +37,7 @@ export type ExpenseDashboardSummary = {
     isPayment?: boolean;
   }[];
   burnPerDay: number;
+  gstToPay: number;
 };
 
 function utcMonthBounds(year: number, month: number): { start: Date; end: Date } {
@@ -126,6 +127,9 @@ export async function computeExpenseSummary(
         total: true,
         issueDate: true,
         invoiceNumber: true,
+        cgstTotal: true,
+        sgstTotal: true,
+        igstTotal: true,
       },
     }),
     prisma.invoice.findMany({
@@ -199,26 +203,29 @@ export async function computeExpenseSummary(
     }
   }
 
+  let curMonthGst = 0;
   for (const row of invoiceRows) {
-    const amt = Number(row.total);
+    const gst = Number(row.cgstTotal ?? 0) + Number(row.sgstTotal ?? 0) + Number(row.igstTotal ?? 0);
+    const baseAmt = Number(row.total) - gst;
     const k = monthKeyFromDate(new Date(row.issueDate));
     const bucket = chartMap.get(k);
     if (bucket) {
-      bucket.income += amt;
+      bucket.income += baseAmt;
     }
 
     const t = new Date(row.issueDate).getTime();
     if (t >= curBounds.start.getTime() && t <= curBounds.end.getTime()) {
-      curIncome += amt;
+      curIncome += baseAmt;
       const category = "Invoices";
       incomeCategoryMonth.set(
         category,
-        (incomeCategoryMonth.get(category) ?? 0) + amt,
+        (incomeCategoryMonth.get(category) ?? 0) + baseAmt,
       );
+      curMonthGst += gst;
     }
 
     if (t >= prevBounds.start.getTime() && t <= prevBounds.end.getTime()) {
-      prevIncome += amt;
+      prevIncome += baseAmt;
     }
   }
 
@@ -293,6 +300,7 @@ export async function computeExpenseSummary(
       isPayment: r.isPayment,
     })),
     burnPerDay,
+    gstToPay: curMonthGst,
   };
 }
 

@@ -33,7 +33,7 @@ async function getAuthIdentity() {
   return { userId: claims.sub, organizationId: claims.orgId };
 }
 
-const USER_SELECT = {
+const USER_BASE_SELECT = {
   id: true,
   email: true,
   name: true,
@@ -41,9 +41,6 @@ const USER_SELECT = {
   isOnboarded: true,
   createdAt: true,
   updatedAt: true,
-  ownedOrgs: {
-    select: ORG_SELECT,
-  },
 } as const;
 
 /**
@@ -52,22 +49,98 @@ const USER_SELECT = {
 export async function getSession(): Promise<UserWithOrgs | null> {
   const identity = await getAuthIdentity();
   if (!identity) return null;
-  
-  const user = await prisma.user.findUnique({
-    where: { id: identity.userId },
-    select: identity.organizationId
-      ? {
-          ...USER_SELECT,
-          ownedOrgs: {
-            where: { id: identity.organizationId },
-            select: ORG_SELECT,
-          },
-        }
-      : USER_SELECT,
-  });
+  const rawUserId = identity.userId;
+  if (!rawUserId) {
+    console.error("[auth] missing userId in identity", { identity });
+    return null;
+  }
 
-  if (identity.organizationId && user?.ownedOrgs.length === 0) return null;
-  return user as UserWithOrgs | null;
+  const userId = typeof rawUserId === "string" ? rawUserId : String(rawUserId);
+
+  let userBase = null;
+  try {
+    userBase = await prisma.user.findUnique({
+      where: { id: userId },
+      select: USER_BASE_SELECT,
+    });
+  } catch (err) {
+    const errStr = err instanceof Error ? err.stack || err.message : String(err);
+    console.error("[auth] prisma.user.findUnique failed (attempt 1)", {
+      identity,
+      userId,
+      where: { id: userId },
+      err: errStr,
+    });
+
+    // For any DB error, log and return null so callers handle auth absence.
+    try {
+      if (String(errStr).includes("ETIMEDOUT")) {
+        await new Promise((r) => setTimeout(r, 200));
+        userBase = await prisma.user.findUnique({
+          where: { id: userId },
+          select: USER_BASE_SELECT,
+        });
+      } else {
+        return null;
+      }
+    } catch (err2) {
+      console.error("[auth] prisma.user.findUnique failed (retry)", {
+        identity,
+        userId,
+        err: err2 instanceof Error ? err2.stack || err2.message : String(err2),
+      });
+      return null;
+    }
+  }
+  if (!userBase) return null;
+
+  let ownedOrgs = [] as Pick<Organization, "id" | "stateCode" | "name">[];
+  try {
+    ownedOrgs = identity.organizationId
+      ? await prisma.organization.findMany({
+          where: { id: identity.organizationId, ownerId: userBase.id },
+          select: ORG_SELECT,
+        })
+      : await prisma.organization.findMany({
+          where: { ownerId: userBase.id },
+          select: ORG_SELECT,
+        });
+  } catch (err) {
+    const errStr = err instanceof Error ? err.stack || err.message : String(err);
+    console.error("[auth] prisma.organization.findMany failed", {
+      identity,
+      userId,
+      err: errStr,
+    });
+    if (String(errStr).includes("ETIMEDOUT")) {
+      // retry once
+      try {
+        await new Promise((r) => setTimeout(r, 200));
+        ownedOrgs = identity.organizationId
+          ? await prisma.organization.findMany({
+              where: { id: identity.organizationId, ownerId: userBase.id },
+              select: ORG_SELECT,
+            })
+          : await prisma.organization.findMany({
+              where: { ownerId: userBase.id },
+              select: ORG_SELECT,
+            });
+      } catch (err2) {
+        console.error("[auth] prisma.organization.findMany failed (retry)", {
+          identity,
+          userId,
+          err: err2 instanceof Error ? err2.stack || err2.message : String(err2),
+        });
+        return null;
+      }
+    } else {
+      return null;
+    }
+  }
+
+  if (identity.organizationId && ownedOrgs.length === 0) return null;
+
+  return { ...userBase, ownedOrgs } as UserWithOrgs;
 }
 
 /**

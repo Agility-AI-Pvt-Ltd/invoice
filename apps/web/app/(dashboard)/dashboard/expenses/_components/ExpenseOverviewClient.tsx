@@ -92,9 +92,8 @@ export function ExpenseOverviewClient({
         />
         <ExpenseStatCard
           icon={Flame}
-          label="Monthly burn"
-          value={formatInr(summary.burnPerDay)}
-          hint="avg. expense per day this month (UTC calendar)"
+          label="Output GST"
+          value={formatInr(summary.gstToPay)}
         />
       </div>
 
