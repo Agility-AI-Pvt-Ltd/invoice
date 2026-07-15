@@ -6,6 +6,7 @@ import { buildPDF } from "@/lib/pdf-templates";
 import nodemailer from "nodemailer";
 import { checkAuthRateLimit } from "@/lib/ratelimit";
 import { verifyOrgAccess, createErrorResponse } from "@/lib/api-utils";
+import { formatInr } from "@/lib/money";
 
 export async function POST(
   req: Request,
@@ -87,7 +88,7 @@ export async function POST(
     const html = buildEmailHtml(invoice, paymentLink, requestedMessage);
     const subject =
       requestedSubject ||
-      `Invoice ${invoice.invoiceNumber} from ${invoice.organization.name} — ₹${(Number(invoice.total) / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      `Invoice ${invoice.invoiceNumber} from ${invoice.organization.name} — ${formatInr(invoice.total, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
     // Generate PDF for attachment
     const pdfDoc = buildPDF(invoice as any, (invoice.organization as any).defaultTemplate || "modern");
@@ -164,7 +165,7 @@ function buildEmailHtml(invoice: any, paymentLink?: string, customMessage?: stri
         </div>
         <div style="display:flex;justify-content:space-between;border-top:1px solid #e5e7eb;padding-top:12px;margin-top:4px;">
           <span style="font-size:15px;font-weight:700;color:#111827;">Total Due</span>
-          <span style="font-size:18px;font-weight:800;color:#111827;">₹${(Number(invoice.total) / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          <span style="font-size:18px;font-weight:800;color:#111827;">${formatInr(invoice.total, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
         </div>
       </div>
       ${paymentLink ? `

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@repo/db';
 import { getSession } from '../../../../lib/auth';
+import { toRupees } from '@/lib/money';
 
 /**
  * GSTR-1 Export API
@@ -69,11 +70,11 @@ export async function GET(req: Request) {
       invoice_date: inv.issueDate.toLocaleDateString('en-IN'),
       place_of_supply: inv.placeOfSupply,
       supply_type: isInterState ? 'Inter-State' : 'Intra-State',
-      taxable_value: Number(inv.subTotal) / 100,
-      cgst: Number(inv.cgstTotal) / 100,
-      sgst: Number(inv.sgstTotal) / 100,
-      igst: Number(inv.igstTotal) / 100,
-      invoice_value: Number(inv.total) / 100,
+      taxable_value: toRupees(inv.subTotal),
+      cgst: toRupees(inv.cgstTotal),
+      sgst: toRupees(inv.sgstTotal),
+      igst: toRupees(inv.igstTotal),
+      invoice_value: toRupees(inv.total),
     };
 
     if (inv.customer.gstin) {
@@ -95,11 +96,11 @@ export async function GET(req: Request) {
     legal_name: organization.name,
     period: monthParam,
     total_invoices: invoices.length,
-    total_taxable_value: invoices.reduce((s, i) => s + Number(i.subTotal), 0) / 100,
-    total_cgst: invoices.reduce((s, i) => s + Number(i.cgstTotal), 0) / 100,
-    total_sgst: invoices.reduce((s, i) => s + Number(i.sgstTotal), 0) / 100,
-    total_igst: invoices.reduce((s, i) => s + Number(i.igstTotal), 0) / 100,
-    total_invoice_value: invoices.reduce((s, i) => s + Number(i.total), 0) / 100,
+    total_taxable_value: toRupees(invoices.reduce((s, i) => s + Number(i.subTotal), 0)),
+    total_cgst: toRupees(invoices.reduce((s, i) => s + Number(i.cgstTotal), 0)),
+    total_sgst: toRupees(invoices.reduce((s, i) => s + Number(i.sgstTotal), 0)),
+    total_igst: toRupees(invoices.reduce((s, i) => s + Number(i.igstTotal), 0)),
+    total_invoice_value: toRupees(invoices.reduce((s, i) => s + Number(i.total), 0)),
   };
 
   if (format === 'csv') {

@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Font,
 } from "@react-pdf/renderer";
+import { toRupees } from "./money";
 
 type InvoiceItem = {
   description: string;
@@ -68,8 +69,7 @@ const toNumber = (value: any): number => {
 };
 
 const fmt = (n: any) => {
-  // DB amounts are stored in paise (integer subunits)
-  const num = toNumber(n) / 100;
+  const num = toRupees(toNumber(n));
   return `₹${num.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 const fmtDate = (d: Date) =>

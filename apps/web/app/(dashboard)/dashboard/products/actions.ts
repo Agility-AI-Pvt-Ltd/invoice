@@ -5,6 +5,7 @@ import { requireAuth } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { logger } from "@/lib/logger";
 import { Decimal } from "decimal.js";
+import { toStoredAmount } from "@/lib/money";
 
 /**
  * Normalizes optional string fields from FormData.
@@ -23,7 +24,7 @@ export async function addProduct(formData: FormData) {
     if (!organizationId) throw new Error("No organization found");
 
     const name = normalize(formData.get("name"))!;
-    const price = Math.round(Number(formData.get("price") as string || "0") * 100);
+    const price = toStoredAmount(formData.get("price") as string || "0");
     const hsnCode = normalize(formData.get("hsnCode"));
     const taxRate = new Decimal(formData.get("taxRate") as string || "0").toDecimalPlaces(2).toString();
     const sku = normalize(formData.get("sku"));
@@ -61,7 +62,7 @@ export async function updateProduct(id: string, formData: FormData) {
     if (!organizationId) throw new Error("No organization found");
 
     const name = normalize(formData.get("name"))!;
-    const price = Math.round(Number(formData.get("price") as string || "0") * 100);
+    const price = toStoredAmount(formData.get("price") as string || "0");
     const hsnCode = normalize(formData.get("hsnCode"));
     const taxRate = new Decimal(formData.get("taxRate") as string || "0").toDecimalPlaces(2).toString();
     const sku = normalize(formData.get("sku"));

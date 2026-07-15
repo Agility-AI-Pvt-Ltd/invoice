@@ -17,6 +17,7 @@ import {
 import { DashboardCharts } from './_components/DashboardCharts';
 import { computeExpenseSummary } from '@/lib/expenses/summary';
 import { amountsToBreakdownRows } from '@/lib/expenses/breakdown';
+import { formatInr as formatInvoiceInr, toRupees } from '@/lib/money';
 
 const STATUS_COLORS: Record<string, string> = {
   DRAFT: '#94a3b8',
@@ -27,7 +28,8 @@ const STATUS_COLORS: Record<string, string> = {
   CANCELLED: '#6b7280',
 };
 
-function formatInr(cents: number) {
+/** Expenses are always stored in paise. */
+function formatExpenseInr(cents: number) {
   return `₹${(cents / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
@@ -120,7 +122,7 @@ export default async function DashboardPage() {
     const d = new Date(inv.issueDate);
     const key = d.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
     if (monthBuckets.has(key)) {
-      monthBuckets.set(key, (monthBuckets.get(key) ?? 0) + Number(inv.total) / 100);
+      monthBuckets.set(key, (monthBuckets.get(key) ?? 0) + toRupees(inv.total));
     }
   }
   const revenueData = Array.from(monthBuckets, ([month, revenue]) => ({
@@ -145,7 +147,7 @@ export default async function DashboardPage() {
   const nameMap = new Map(customerNames.map((c) => [c.id, c.name]));
   const topCustomers = topCustomerRows.map((r) => ({
     name: nameMap.get(r.customerId) ?? 'Unknown',
-    revenue: Number(r._sum.total ?? 0) / 100,
+    revenue: toRupees(r._sum.total ?? 0),
   }));
 
   // Total Revenue based on all non-cancelled invoices
@@ -179,7 +181,7 @@ export default async function DashboardPage() {
   const invoiceStats = [
     { 
       label: "Total Revenue", 
-      value: `₹${(Number(totalRevenue) / 100).toLocaleString('en-IN')}`, 
+      value: formatInvoiceInr(totalRevenue), 
       icon: CheckCircle2,
       color: "text-green-600",
       bg: "bg-green-500/10",
@@ -187,7 +189,7 @@ export default async function DashboardPage() {
     },
     { 
       label: "Pending Payments", 
-      value: `₹${(Number(pendingRevenue) / 100).toLocaleString('en-IN')}`, 
+      value: formatInvoiceInr(pendingRevenue), 
       icon: Clock,
       color: "text-amber-600",
       bg: "bg-amber-500/10",
@@ -236,7 +238,7 @@ export default async function DashboardPage() {
             <div className="absolute top-0 right-0 w-20 h-20 bg-green-500/10 rounded-bl-full -mr-10 -mt-10 transition-transform group-hover:scale-125" />
             <ArrowUpRight className="w-5 h-5 text-green-600 mb-4" />
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Total Income</p>
-            <p className="text-2xl font-bold mt-1 tracking-tight text-foreground">{formatInr(expIncome)}</p>
+            <p className="text-2xl font-bold mt-1 tracking-tight text-foreground">{formatExpenseInr(expIncome)}</p>
             {incomeTrend.text && (
               <p className={`text-[10px] font-semibold mt-1.5 ${incomeTrend.trendUp ? 'text-green-600' : 'text-orange-500'}`}>
                 {incomeTrend.text}
@@ -248,7 +250,7 @@ export default async function DashboardPage() {
             <div className="absolute top-0 right-0 w-20 h-20 bg-orange-500/10 rounded-bl-full -mr-10 -mt-10 transition-transform group-hover:scale-125" />
             <ArrowDownRight className="w-5 h-5 text-orange-500 mb-4" />
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Total Expenses</p>
-            <p className="text-2xl font-bold mt-1 tracking-tight text-foreground">{formatInr(expExpenses)}</p>
+            <p className="text-2xl font-bold mt-1 tracking-tight text-foreground">{formatExpenseInr(expExpenses)}</p>
             {expenseTrend.text && (
               <p className={`text-[10px] font-semibold mt-1.5 ${expenseTrend.trendUp ? 'text-green-600' : 'text-orange-500'}`}>
                 {expenseTrend.text}
@@ -260,7 +262,7 @@ export default async function DashboardPage() {
             <div className="absolute top-0 right-0 w-20 h-20 bg-primary/10 rounded-bl-full -mr-10 -mt-10 transition-transform group-hover:scale-125" />
             <DollarSign className="w-5 h-5 text-primary mb-4" />
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Net Profit</p>
-            <p className="text-2xl font-bold mt-1 tracking-tight text-foreground">{formatInr(expNet)}</p>
+            <p className="text-2xl font-bold mt-1 tracking-tight text-foreground">{formatExpenseInr(expNet)}</p>
             {netTrend.text && (
               <p className={`text-[10px] font-semibold mt-1.5 ${netTrend.trendUp ? 'text-green-600' : 'text-orange-500'}`}>
                 {netTrend.text}
@@ -272,7 +274,7 @@ export default async function DashboardPage() {
             <div className="absolute top-0 right-0 w-20 h-20 bg-rose-500/10 rounded-bl-full -mr-10 -mt-10 transition-transform group-hover:scale-125" />
             <Flame className="w-5 h-5 text-rose-500 mb-4" />
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Monthly Burn</p>
-            <p className="text-2xl font-bold mt-1 tracking-tight text-foreground">{formatInr(burnPerDay)}</p>
+            <p className="text-2xl font-bold mt-1 tracking-tight text-foreground">{formatExpenseInr(burnPerDay)}</p>
             <p className="text-[10px] text-muted-foreground mt-1.5">avg. expense per day this month</p>
           </div>
         </div>
@@ -375,7 +377,7 @@ export default async function DashboardPage() {
                       <p className="text-[10px] text-muted-foreground/70 mt-1">{new Date(inv.issueDate).toLocaleDateString('en-IN')}</p>
                     </td>
                     <td className="px-8 py-5 text-muted-foreground font-medium">{inv.customer.name}</td>
-                    <td className="px-8 py-5 font-bold text-foreground">₹{(Number(inv.total) / 100).toLocaleString('en-IN')}</td>
+                    <td className="px-8 py-5 font-bold text-foreground">{formatInvoiceInr(inv.total)}</td>
                     <td className="px-8 py-5 text-right">
                       <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${
                         inv.status === 'PAID' ? 'bg-green-500/10 text-green-600' : 

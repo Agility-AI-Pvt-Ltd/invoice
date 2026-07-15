@@ -6,8 +6,9 @@ import {
   ArrowLeft, Pencil, Plus, ArrowUpRight, Clock, CheckCircle2, AlertCircle, TrendingUp, FileText, ChevronRight 
 } from 'lucide-react';
 import InvoiceActions from './InvoiceActions';
+import { formatInr, toRupees } from '@/lib/money';
 
-const fmt = (n: number | any) => `₹${(Number(n) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const fmt = (n: number | any) => formatInr(n, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default async function InvoiceViewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -31,8 +32,8 @@ export default async function InvoiceViewPage({ params }: { params: Promise<{ id
   // If we have explicit tax values, use them. Otherwise, fall back to state-code detection.
   const isInterState = hasIgst ? true : hasCgst ? false : (!!orgState && !!supplyState && orgState !== supplyState);
   const totalPaidPaise = invoice.payments.reduce((s, p) => s + Number(p.amount), 0);
-  const totalPaid = totalPaidPaise / 100;
-  const totalInRupees = Number(invoice.total) / 100;
+  const totalPaid = toRupees(totalPaidPaise);
+  const totalInRupees = toRupees(invoice.total);
   const remaining = totalInRupees - totalPaid;
   const template = (invoice.organization as any).defaultTemplate || 'modern';
 

@@ -5,6 +5,7 @@ import Razorpay from "razorpay";
 import { verifyOrgAccess, createErrorResponse, logApiAction } from "@/lib/api-utils";
 import { checkAuthRateLimit } from "@/lib/ratelimit";
 import { env } from "@/lib/env";
+import { toRupees } from "@/lib/money";
 
 export async function POST(
   req: Request,
@@ -94,7 +95,7 @@ export async function POST(
 
     const rzpLink = await (razorpay.paymentLink.create as (config: any) => Promise<RazorpayLinkResponse>)(
       {
-        amount: Math.round(remaining), // already paise (invoice totals are integer subunits)
+        amount: Math.round(toRupees(remaining) * 100), // Razorpay always expects paise
         currency: invoice.organization.currency || "INR",
         description: `Invoice ${invoice.invoiceNumber} — ${invoice.organization.name}`,
         reference_id: invoice.invoiceNumber,

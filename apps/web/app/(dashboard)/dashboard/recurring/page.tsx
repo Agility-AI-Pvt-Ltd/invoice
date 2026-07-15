@@ -2,6 +2,7 @@ import { requireAuth } from '../../../../lib/auth';
 import { prisma } from '@repo/db';
 import Link from 'next/link';
 import { Plus, Repeat, FileText, Calendar, Clock, MoreHorizontal, ArrowRight, Zap, Search } from 'lucide-react';
+import { formatInr } from '@/lib/money';
 
 export default async function RecurringInvoicesPage({
   searchParams,
@@ -85,7 +86,7 @@ export default async function RecurringInvoicesPage({
         <div className="bg-card border border-border p-6 rounded-[2rem] shadow-sm relative overflow-hidden group text-primary">
           <div className="absolute inset-0 bg-primary/5 pointer-events-none" />
           <p className="text-[10px] font-bold uppercase tracking-widest mb-1 opacity-70">Total ARR Value</p>
-          <p className="text-3xl font-black">₹{(recurringInvoices.reduce((acc, r) => acc + (Number(r.total) * (r.interval === 'MONTHLY' ? 12 : r.interval === 'WEEKLY' ? 52 : 1)), 0) / 100).toLocaleString('en-IN')}</p>
+          <p className="text-3xl font-black">{formatInr(recurringInvoices.reduce((acc, r) => acc + (Number(r.total) * (r.interval === 'MONTHLY' ? 12 : r.interval === 'WEEKLY' ? 52 : 1)), 0))}</p>
         </div>
       </div>
 
@@ -131,7 +132,7 @@ export default async function RecurringInvoicesPage({
                       </div>
                     </td>
                     <td className="px-8 py-6 font-bold text-foreground">
-                      ₹{(Number(recurring.total) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      {formatInr(recurring.total, { minimumFractionDigits: 2 })}
                     </td>
                     <td className="px-8 py-6">
                       <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-secondary rounded-lg text-[10px] font-black uppercase tracking-widest text-muted-foreground border border-border/50">

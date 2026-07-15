@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { InvoiceActions } from './InvoiceActions';
 import { InvoiceAgingChart } from './_components/InvoiceAgingChart';
+import { formatInr, toRupees } from '@/lib/money';
 
 const STATUS_STYLES: Record<string, string> = {
   DRAFT: "bg-secondary text-muted-foreground border-border",
@@ -67,7 +68,7 @@ export default async function InvoicesPage({
 
   for (const inv of unpaidInvoices) {
     const daysOverdue = Math.max(0, Math.floor((now.getTime() - new Date(inv.dueDate).getTime()) / (1000 * 60 * 60 * 24)));
-    const total = Number(inv.total) / 100;
+    const total = toRupees(inv.total);
     if (daysOverdue <= 30) {
       agingBuckets[0]!.count++;
       agingBuckets[0]!.amount += total;
@@ -186,7 +187,7 @@ export default async function InvoicesPage({
                     <span className="text-muted-foreground font-medium">{new Date(inv.issueDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
                   </td>
                   <td className="px-6 py-5">
-                    <span className="font-bold text-foreground">₹{(Number(inv.total) / 100).toLocaleString('en-IN')}</span>
+                    <span className="font-bold text-foreground">{formatInr(inv.total)}</span>
                   </td>
                   <td className="px-6 py-5 text-center">
                     <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${STATUS_STYLES[inv.status] || STATUS_STYLES.DRAFT}`}>

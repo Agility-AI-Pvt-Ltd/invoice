@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Plus, Search, Box, Filter, Download, MoreHorizontal, TrendingUp } from 'lucide-react';
 import ProductModal from './ProductModal';
 import { ProductActions } from './ProductActions';
+import { toRupees } from '@/lib/money';
 
 export default async function ProductsPage({
   searchParams,
@@ -25,7 +26,8 @@ export default async function ProductsPage({
     orderBy: { createdAt: 'desc' },
   }).then(products => products.map(p => ({
     ...p,
-    price: p.price,
+    // UI + ProductModal work in rupees
+    price: toRupees(p.price),
     taxRate: p.taxRate.toNumber()
   })));
 
@@ -107,7 +109,7 @@ export default async function ProductsPage({
                       </span>
                     </td>
                     <td className="px-8 py-6 font-bold text-foreground">
-                      ₹{(Number(p.price) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      ₹{Number(p.price).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                     </td>
                     <td className="px-8 py-6">
                       <div className="flex items-center gap-2">

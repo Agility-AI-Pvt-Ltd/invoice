@@ -1,5 +1,6 @@
 import { Decimal } from 'decimal.js';
 import { invoiceItemSchema } from "@repo/domain";
+import { amountScale } from "./money";
 
 export interface GSTResult {
   cgst: number;
@@ -69,10 +70,11 @@ export function computeInvoiceTotals(items: LineInput[], isInterState: boolean):
   let discountTotal = new Decimal(0);
 
   const processedItems: ProcessedItem[] = items.map((item) => {
+    const scale = amountScale();
     const qty = new Decimal(Number(item.quantity) || 0);
-    const price = new Decimal(Number(item.unitPrice) || 0).times(100).toDecimalPlaces(0);
+    const price = new Decimal(Number(item.unitPrice) || 0).times(scale).toDecimalPlaces(0);
     const taxRate = Number(item.taxRate) || 0;
-    const disc = new Decimal(Number(item.discount) || 0).times(100).toDecimalPlaces(0);
+    const disc = new Decimal(Number(item.discount) || 0).times(scale).toDecimalPlaces(0);
     
     const itemSub = qty.times(price);
     const taxableAmount = itemSub.minus(disc);

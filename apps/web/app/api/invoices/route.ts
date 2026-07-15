@@ -7,6 +7,7 @@ import { logger } from "@/lib/logger";
 import { stateCodeSchema, indianPhoneSchema } from "@repo/domain";
 import { getSessionOrThrow, getOrgOrThrow } from "../../../lib/auth";
 import { enforceRateLimit, expensiveActionLimit } from "@/lib/ratelimit-api";
+import { toStoredAmount } from "@/lib/money";
 
 export async function POST(request: Request) {
   const context = "api:invoices:create";
@@ -131,7 +132,7 @@ export async function POST(request: Request) {
               data: {
                 organizationId: organization.id,
                 name: item.description,
-                price: Math.round((Number(item.unitPrice) || 0) * 100),
+                price: toStoredAmount(item.unitPrice),
                 hsnCode: item.hsnCode || null,
                 taxRate: Number(item.taxRate) || 0,
               },

@@ -11,6 +11,7 @@ import {
   verifyOrgAccess,
   logApiAction,
 } from "@/lib/api-utils";
+import { toStoredAmount } from "@/lib/money";
 
 function formatStockError(message: string) {
   const m = message.trim();
@@ -58,7 +59,7 @@ export async function POST(
     }
 
     const { amount: rawAmount, method, notes } = validation.data;
-    const amount = Math.round(Number(rawAmount) * 100);
+    const amount = toStoredAmount(rawAmount);
 
     const result = await prisma.$transaction(async (tx) => {
       const invoice = await tx.invoice.findUnique({
