@@ -1,5 +1,11 @@
 import { prisma } from "@repo/db";
 import type { ExpenseLedgerKind } from "@repo/db";
+import { toRupees } from "@/lib/money";
+
+/** Expense ledger is always paise; normalize invoice totals into the same unit. */
+function invoiceTotalAsPaise(total: number | string | null | undefined): number {
+  return Math.round(toRupees(total) * 100);
+}
 
 export type ExpenseDashboardSummary = {
   chartMonths: {
@@ -200,7 +206,7 @@ export async function computeExpenseSummary(
   }
 
   for (const row of invoiceRows) {
-    const amt = Number(row.total);
+    const amt = invoiceTotalAsPaise(row.total);
     const k = monthKeyFromDate(new Date(row.issueDate));
     const bucket = chartMap.get(k);
     if (bucket) {
@@ -254,7 +260,7 @@ export async function computeExpenseSummary(
       kind: "INCOME" as const,
       category: "Invoices",
       description: `Invoice #${inv.invoiceNumber} (${inv.customer.name})`,
-      amount: Number(inv.total),
+      amount: invoiceTotalAsPaise(inv.total),
       occurredAt: inv.issueDate,
       isPayment: true,
     })),

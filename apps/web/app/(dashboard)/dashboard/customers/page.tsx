@@ -6,6 +6,7 @@ import { Users, UserPlus, Search, Filter, Download, MoreHorizontal, Pencil } fro
 import CustomerModal from './CustomerModal';
 import { CustomerActions } from './CustomerActions';
 import { CustomerRevenueChart } from './_components/CustomerRevenueChart';
+import { toRupees } from '@/lib/money';
 
 export default async function CustomersPage({
   searchParams,
@@ -48,7 +49,7 @@ export default async function CustomersPage({
   const revNameMap = new Map(revCustomerNames.map((c) => [c.id, c.name]));
   const customerRevenueData = topRevenueRows.map((r) => ({
     name: revNameMap.get(r.customerId) ?? 'Unknown',
-    revenue: Number(r._sum.total ?? 0),
+    revenue: toRupees(r._sum.total ?? 0),
     invoiceCount: r._count._all,
   }));
 

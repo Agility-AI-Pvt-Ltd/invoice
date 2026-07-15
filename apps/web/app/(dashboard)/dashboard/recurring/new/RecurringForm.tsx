@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2, X, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 import { computeInvoiceTotals } from "../../../../../lib/gst";
+import { toRupees } from "@/lib/money";
 
 type Customer = { id: string; name: string; stateCode: string | null };
 type LineItem = {
@@ -353,29 +354,29 @@ export default function RecurringForm({ customers, orgStateCode, defaultDueDays 
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <div>
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Subtotal</p>
-            <p className="text-lg font-black text-foreground">₹{Number(totals.subTotal).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+            <p className="text-lg font-black text-foreground">₹{toRupees(totals.subTotal).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
           </div>
           {!isInterState && (
             <>
               <div>
                 <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">CGST</p>
-                <p className="text-lg font-black text-foreground">₹{Number(totals.cgstTotal).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                <p className="text-lg font-black text-foreground">₹{toRupees(totals.cgstTotal).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
               </div>
               <div>
                 <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">SGST</p>
-                <p className="text-lg font-black text-foreground">₹{Number(totals.sgstTotal).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                <p className="text-lg font-black text-foreground">₹{toRupees(totals.sgstTotal).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
               </div>
             </>
           )}
           {isInterState && (
             <div>
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">IGST</p>
-              <p className="text-lg font-black text-foreground">₹{Number(totals.igstTotal).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+              <p className="text-lg font-black text-foreground">₹{toRupees(totals.igstTotal).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
             </div>
           )}
           <div className="col-span-2 md:col-span-1 text-right">
             <p className="text-[10px] font-bold text-primary uppercase tracking-widest mb-1">Total</p>
-            <p className="text-2xl font-black text-primary">₹{Number(totals.grandTotal).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+            <p className="text-2xl font-black text-primary">₹{toRupees(totals.grandTotal).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
           </div>
         </div>
       </div>
