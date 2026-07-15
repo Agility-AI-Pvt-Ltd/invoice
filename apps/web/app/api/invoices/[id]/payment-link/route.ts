@@ -94,7 +94,7 @@ export async function POST(
 
     const rzpLink = await (razorpay.paymentLink.create as (config: any) => Promise<RazorpayLinkResponse>)(
       {
-        amount: Math.round(remaining * 100), // rupees → paise
+        amount: Math.round(remaining), // already paise (invoice totals are integer subunits)
         currency: invoice.organization.currency || "INR",
         description: `Invoice ${invoice.invoiceNumber} — ${invoice.organization.name}`,
         reference_id: invoice.invoiceNumber,

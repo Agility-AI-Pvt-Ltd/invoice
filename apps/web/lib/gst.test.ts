@@ -13,20 +13,18 @@ describe('computeInvoiceTotals', () => {
       }
     ];
     
-    // Taxable = (2 * 500) - 100 = 900
-    // CGST = 900 * 0.09 = 81
-    // SGST = 900 * 0.09 = 81
-    // IGST = 0
-    // Total = 900 + 81 + 81 = 1062
+    // Inputs are rupees; storage is paise (×100).
+    // Taxable = (2 * 50000) - 10000 = 90000
+    // CGST = 8100, SGST = 8100, Total = 106200
     
     const result = computeInvoiceTotals(items, false);
     
-    expect(result.subTotal).toBe(1000);
-    expect(result.discountTotal).toBe(100);
-    expect(result.cgstTotal).toBe(81);
-    expect(result.sgstTotal).toBe(81);
+    expect(result.subTotal).toBe(100000);
+    expect(result.discountTotal).toBe(10000);
+    expect(result.cgstTotal).toBe(8100);
+    expect(result.sgstTotal).toBe(8100);
     expect(result.igstTotal).toBe(0);
-    expect(result.grandTotal).toBe(1062);
+    expect(result.grandTotal).toBe(106200);
   });
 
   it('calculates totals correctly for inter-state', () => {
@@ -42,8 +40,8 @@ describe('computeInvoiceTotals', () => {
     
     const result = computeInvoiceTotals(items, true);
     
-    expect(result.subTotal).toBe(1000);
-    expect(result.igstTotal).toBe(120);
-    expect(result.grandTotal).toBe(1120);
+    expect(result.subTotal).toBe(100000);
+    expect(result.igstTotal).toBe(12000);
+    expect(result.grandTotal).toBe(112000);
   });
 });

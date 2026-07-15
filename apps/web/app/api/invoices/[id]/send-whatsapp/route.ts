@@ -54,7 +54,7 @@ export async function POST(
     
     
     // We construct a friendly message
-    const amount = Number(invoice.total).toFixed(2);
+    const amount = (Number(invoice.total) / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const paymentLink = invoice.paymentLinks[0]?.shortUrl;
     const defaultMessage = `Hi ${invoice.customer.name}, your invoice ${invoice.invoiceNumber} from ${invoice.organization.name} for ₹${amount} is ready. 
 Due date: ${new Date(invoice.dueDate).toLocaleDateString('en-IN')}.

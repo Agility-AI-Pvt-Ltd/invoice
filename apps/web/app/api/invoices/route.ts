@@ -131,7 +131,7 @@ export async function POST(request: Request) {
               data: {
                 organizationId: organization.id,
                 name: item.description,
-                price: Number(item.unitPrice) || 0,
+                price: Math.round((Number(item.unitPrice) || 0) * 100),
                 hsnCode: item.hsnCode || null,
                 taxRate: Number(item.taxRate) || 0,
               },

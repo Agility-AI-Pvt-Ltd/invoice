@@ -67,7 +67,7 @@ export default async function InvoicesPage({
 
   for (const inv of unpaidInvoices) {
     const daysOverdue = Math.max(0, Math.floor((now.getTime() - new Date(inv.dueDate).getTime()) / (1000 * 60 * 60 * 24)));
-    const total = Number(inv.total);
+    const total = Number(inv.total) / 100;
     if (daysOverdue <= 30) {
       agingBuckets[0]!.count++;
       agingBuckets[0]!.amount += total;
