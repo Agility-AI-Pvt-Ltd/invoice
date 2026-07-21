@@ -71,6 +71,22 @@ const STATUS_STYLES: Record<string, string> = {
   CANCELLED: "bg-muted text-muted-foreground border-border opacity-60",
 };
 
+function resolvedInvoiceTotal(invoice: {
+  subTotal: number;
+  discountTotal: number;
+  cgstTotal: number;
+  sgstTotal: number;
+  igstTotal: number;
+}) {
+  return (
+    Number(invoice.subTotal ?? 0) -
+    Number(invoice.discountTotal ?? 0) +
+    Number(invoice.cgstTotal ?? 0) +
+    Number(invoice.sgstTotal ?? 0) +
+    Number(invoice.igstTotal ?? 0)
+  );
+}
+
 export default async function InvoicesPage({
   searchParams,
 }: {
@@ -357,7 +373,7 @@ export default async function InvoicesPage({
                     <span className="text-muted-foreground font-medium">{new Date(inv.issueDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
                   </td>
                   <td className="px-6 py-5">
-                    <span className="font-bold text-foreground">{formatInr(inv.total)}</span>
+                    <span className="font-bold text-foreground">{formatInr(resolvedInvoiceTotal(inv))}</span>
                   </td>
                   <td className="px-6 py-5 text-center">
                     <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${STATUS_STYLES[inv.status] || STATUS_STYLES.DRAFT}`}>
