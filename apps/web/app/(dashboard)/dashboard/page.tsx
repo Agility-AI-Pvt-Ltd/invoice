@@ -12,7 +12,6 @@ import {
   AlertCircle,
   ArrowDownRight,
   DollarSign,
-  Flame,
 } from 'lucide-react';
 import { DashboardCharts } from './_components/DashboardCharts';
 import { computeExpenseSummary } from '@/lib/expenses/summary';
@@ -159,13 +158,26 @@ export default async function DashboardPage() {
     _sum: { total: true }
   });
   const totalRevenue = Number(totalRevenueResult._sum.total ?? 0);
+  const gstResult = await prisma.invoice.aggregate({
+    where: {
+      organizationId,
+      status: { not: "CANCELLED" },
+    },
+    _sum: { cgstTotal: true, sgstTotal: true, igstTotal: true },
+  });
+  const totalGst =
+    Number(gstResult._sum.cgstTotal ?? 0) +
+    Number(gstResult._sum.sgstTotal ?? 0) +
+    Number(gstResult._sum.igstTotal ?? 0);
+  const totalRevenueExclGst = totalRevenue - totalGst;
   const pendingRevenue = Number(pendingInvoices._sum.total ?? 0) - Number(paymentsResult._sum.amount ?? 0);
 
   // Expense summary data
   const expIncome = expenseSummary?.currentMonth.income ?? 0;
   const expExpenses = expenseSummary?.currentMonth.expenses ?? 0;
   const expNet = expenseSummary?.currentMonth.net ?? 0;
-  const burnPerDay = expenseSummary?.burnPerDay ?? 0;
+  const gstToPay = expenseSummary?.gstToPay ?? 0;
+  const gstBreakdown = expenseSummary?.gstBreakdown ?? { cgst: 0, sgst: 0, igst: 0 };
   const incomeTrend = trendLine(expenseSummary?.trends.incomePct ?? null, false);
   const expenseTrend = trendLine(expenseSummary?.trends.expensePct ?? null, true);
   const netTrend = trendLine(expenseSummary?.trends.netPct ?? null, false);
@@ -181,7 +193,7 @@ export default async function DashboardPage() {
   const invoiceStats = [
     { 
       label: "Total Revenue", 
-      value: formatInvoiceInr(totalRevenue), 
+      value: formatInvoiceInr(totalRevenueExclGst), 
       icon: CheckCircle2,
       color: "text-green-600",
       bg: "bg-green-500/10",
@@ -232,51 +244,58 @@ export default async function DashboardPage() {
             View Details <ArrowUpRight className="w-3.5 h-3.5" />
           </Link>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 items-stretch gap-4 md:grid-cols-4">
           {/* Total Income */}
-          <div className="bg-card border border-green-500/20 p-5 rounded-3xl shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all relative overflow-hidden group">
+          <div className="bg-card border border-green-500/20 p-5 rounded-3xl shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all relative overflow-hidden group h-full">
             <div className="absolute top-0 right-0 w-20 h-20 bg-green-500/10 rounded-bl-full -mr-10 -mt-10 transition-transform group-hover:scale-125" />
             <ArrowUpRight className="w-5 h-5 text-green-600 mb-4" />
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Total Income</p>
             <p className="text-2xl font-bold mt-1 tracking-tight text-foreground">{formatExpenseInr(expIncome)}</p>
-            {incomeTrend.text && (
-              <p className={`text-[10px] font-semibold mt-1.5 ${incomeTrend.trendUp ? 'text-green-600' : 'text-orange-500'}`}>
-                {incomeTrend.text}
-              </p>
-            )}
+            <div className="mt-1.5 min-h-[15px]">
+              {incomeTrend.text && (
+                <p className={`text-[10px] font-semibold ${incomeTrend.trendUp ? 'text-green-600' : 'text-orange-500'}`}>
+                  {incomeTrend.text}
+                </p>
+              )}
+            </div>
           </div>
           {/* Total Expenses */}
-          <div className="bg-card border border-orange-500/20 p-5 rounded-3xl shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all relative overflow-hidden group">
+          <div className="bg-card border border-orange-500/20 p-5 rounded-3xl shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all relative overflow-hidden group h-full">
             <div className="absolute top-0 right-0 w-20 h-20 bg-orange-500/10 rounded-bl-full -mr-10 -mt-10 transition-transform group-hover:scale-125" />
             <ArrowDownRight className="w-5 h-5 text-orange-500 mb-4" />
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Total Expenses</p>
             <p className="text-2xl font-bold mt-1 tracking-tight text-foreground">{formatExpenseInr(expExpenses)}</p>
-            {expenseTrend.text && (
-              <p className={`text-[10px] font-semibold mt-1.5 ${expenseTrend.trendUp ? 'text-green-600' : 'text-orange-500'}`}>
-                {expenseTrend.text}
-              </p>
-            )}
+            <div className="mt-1.5 min-h-[15px]">
+              {expenseTrend.text && (
+                <p className={`text-[10px] font-semibold ${expenseTrend.trendUp ? 'text-green-600' : 'text-orange-500'}`}>
+                  {expenseTrend.text}
+                </p>
+              )}
+            </div>
           </div>
           {/* Net Profit */}
-          <div className="bg-card border border-primary/20 p-5 rounded-3xl shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all relative overflow-hidden group">
+          <div className="bg-card border border-primary/20 p-5 rounded-3xl shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all relative overflow-hidden group h-full">
             <div className="absolute top-0 right-0 w-20 h-20 bg-primary/10 rounded-bl-full -mr-10 -mt-10 transition-transform group-hover:scale-125" />
             <DollarSign className="w-5 h-5 text-primary mb-4" />
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Net Profit</p>
             <p className="text-2xl font-bold mt-1 tracking-tight text-foreground">{formatExpenseInr(expNet)}</p>
-            {netTrend.text && (
-              <p className={`text-[10px] font-semibold mt-1.5 ${netTrend.trendUp ? 'text-green-600' : 'text-orange-500'}`}>
-                {netTrend.text}
-              </p>
-            )}
+            <div className="mt-1.5 min-h-[15px]">
+              {netTrend.text && (
+                <p className={`text-[10px] font-semibold ${netTrend.trendUp ? 'text-green-600' : 'text-orange-500'}`}>
+                  {netTrend.text}
+                </p>
+              )}
+            </div>
           </div>
-          {/* Monthly Burn */}
-          <div className="bg-card border border-rose-500/20 p-5 rounded-3xl shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-20 h-20 bg-rose-500/10 rounded-bl-full -mr-10 -mt-10 transition-transform group-hover:scale-125" />
-            <Flame className="w-5 h-5 text-rose-500 mb-4" />
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Monthly Burn</p>
-            <p className="text-2xl font-bold mt-1 tracking-tight text-foreground">{formatExpenseInr(burnPerDay)}</p>
-            <p className="text-[10px] text-muted-foreground mt-1.5">avg. expense per day this month</p>
-          </div>
+          {/* Output GST */}
+          <OutputGstCard
+            totalFormatted={formatExpenseInr(gstToPay)}
+            breakdownFormatted={{
+              cgst: formatExpenseInr(gstBreakdown.cgst),
+              sgst: formatExpenseInr(gstBreakdown.sgst),
+              igst: formatExpenseInr(gstBreakdown.igst),
+            }}
+          />
         </div>
       </div>
 
@@ -442,6 +461,7 @@ export default async function DashboardPage() {
 // ── Inline server-side wrappers for client components ──
 import { IncomeExpenseChart } from './expenses/_components/IncomeExpenseChart';
 import { ExpenseBreakdownList } from './expenses/_components/ExpenseBreakdownList';
+import { OutputGstCard } from './expenses/_components/OutputGstCard';
 import type { BreakdownRow } from '@/lib/expenses/breakdown';
 
 function IncomeVsExpensesChartWrapper({ data }: { data: { month: string; income: number; expenses: number }[] }) {

@@ -4,7 +4,6 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import {
   ArrowDownRight,
-  Flame,
   ChevronRight,
   Plus,
   Trash2,
@@ -16,6 +15,7 @@ import { ExpenseBreakdownList } from "./ExpenseBreakdownList";
 import { formatInr, formatInrSigned } from "../_lib/format";
 import { AddLedgerEntryDialog } from "./AddLedgerEntryDialog";
 import { ExpensesOnlyChart } from "./ExpensesOnlyChart";
+import { OutputGstCard } from "./OutputGstCard";
 
 function trendLine(pct: number | null, invertGood?: boolean): { text?: string; trendUp?: boolean } {
   if (pct === null) return {};
@@ -82,7 +82,7 @@ export function ExpenseOverviewClient({
       />
 
       {/* Expense-only stat cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
         <ExpenseStatCard
           icon={ArrowDownRight}
           label="Total expenses"
@@ -90,11 +90,13 @@ export function ExpenseOverviewClient({
           trend={expenseTrend.text}
           trendUp={expenseTrend.trendUp}
         />
-        <ExpenseStatCard
-          icon={Flame}
-          label="Monthly burn"
-          value={formatInr(summary.burnPerDay)}
-          hint="avg. expense per day this month (UTC calendar)"
+        <OutputGstCard
+          totalFormatted={formatInr(summary.gstToPay)}
+          breakdownFormatted={{
+            cgst: formatInr(summary.gstBreakdown.cgst),
+            sgst: formatInr(summary.gstBreakdown.sgst),
+            igst: formatInr(summary.gstBreakdown.igst),
+          }}
         />
       </div>
 
