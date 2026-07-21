@@ -126,7 +126,7 @@ export default async function InvoiceViewPage({ params }: { params: Promise<{ id
               <p className={`text-sm font-bold uppercase tracking-widest ${remaining <= 0 ? "text-green-600" : "text-amber-600"}`}>
                 {remaining <= 0 ? "Fully Paid" : "Partially Paid"}
               </p>
-              <p className="text-muted-foreground text-xs font-medium">₹{totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} collected so far</p>
+              <p className="text-muted-foreground text-xs font-medium">?{totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} collected so far</p>
             </div>
           </div>
           {remaining > 0 && (
@@ -183,7 +183,7 @@ export default async function InvoiceViewPage({ params }: { params: Promise<{ id
   );
 }
 
-/* ─── TEMPLATE COMPONENTS ────────────────────────────────────────── */
+/* ??? TEMPLATE COMPONENTS ?????????????????????????????????????????? */
 
 function ModernTemplate({ invoice, isInterState }: any) {
   return (
@@ -314,7 +314,7 @@ function ModernTemplate({ invoice, isInterState }: any) {
           )}
           <div className="pt-4 border-t border-white/10 flex justify-between items-end">
             <span className="text-xs font-black uppercase tracking-[0.2em] text-primary">Grand Total</span>
-            <span className="text-3xl font-black italic">{fmt(displayTotalPaise)}</span>
+            <span className="text-3xl font-black italic">{fmt(resolvedInvoiceTotal(invoice))}</span>
           </div>
         </div>
       </div>
@@ -434,7 +434,7 @@ function ClassicTemplate({ invoice, isInterState }: any) {
           )}
           <div className="flex justify-between bg-slate-900 text-white p-4 rounded-xl items-end mt-6">
             <span className="text-[10px] font-black uppercase tracking-[0.2em]">Amount Due</span>
-            <span className="text-3xl font-black italic">{fmt(displayTotalPaise)}</span>
+            <span className="text-3xl font-black italic">{fmt(resolvedInvoiceTotal(invoice))}</span>
           </div>
         </div>
       </div>
@@ -536,7 +536,7 @@ function MinimalTemplate({ invoice, isInterState }: any) {
           )}
           <div className="flex justify-between items-end px-4 py-6">
             <span className="text-xs font-black uppercase tracking-widest text-slate-300">Amount Due</span>
-            <span className="text-5xl font-black tracking-tighter text-slate-900 italic leading-none">{fmt(displayTotalPaise)}</span>
+            <span className="text-5xl font-black tracking-tighter text-slate-900 italic leading-none">{fmt(resolvedInvoiceTotal(invoice))}</span>
           </div>
         </div>
       </div>
