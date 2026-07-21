@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import type { ExpenseDashboardSummary } from "@/lib/expenses/summary";
 import { amountsToBreakdownRows } from "@/lib/expenses/breakdown";
+import { buildGstMonthOptions, currentUtcMonthKey } from "@/lib/expenses/gst-months";
 import { ExpenseStatCard } from "./ExpenseStatCard";
 import { ExpenseBreakdownList } from "./ExpenseBreakdownList";
 import { formatInr, formatInrSigned } from "../_lib/format";
@@ -46,6 +47,11 @@ export function ExpenseOverviewClient({
   const breakdownRows = amountsToBreakdownRows(summary.expenseBreakdown);
 
   const expenseTrend = trendLine(summary.trends.expensePct, true);
+
+  const gstMonthOptions = useMemo(
+    () => buildGstMonthOptions(summary.gstByMonth, formatInr, currentUtcMonthKey()),
+    [summary.gstByMonth],
+  );
 
   // Only show expense transactions
   const expenseTransactions = summary.recent.filter((tx) => tx.kind === "EXPENSE");
@@ -90,14 +96,7 @@ export function ExpenseOverviewClient({
           trend={expenseTrend.text}
           trendUp={expenseTrend.trendUp}
         />
-        <OutputGstCard
-          totalFormatted={formatInr(summary.gstToPay)}
-          breakdownFormatted={{
-            cgst: formatInr(summary.gstBreakdown.cgst),
-            sgst: formatInr(summary.gstBreakdown.sgst),
-            igst: formatInr(summary.gstBreakdown.igst),
-          }}
-        />
+        <OutputGstCard months={gstMonthOptions} />
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">

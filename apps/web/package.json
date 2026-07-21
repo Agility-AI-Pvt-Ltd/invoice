@@ -11,7 +11,8 @@
     "check-types": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "process-recurring": "tsx scripts/process-recurring.ts"
+    "process-recurring": "tsx scripts/process-recurring.ts",
+    "fix-invoice-totals": "tsx --env-file=.env scripts/fix-invoice-gst-totals.ts"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.19.0",

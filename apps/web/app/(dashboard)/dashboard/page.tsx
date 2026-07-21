@@ -16,6 +16,7 @@ import {
 import { DashboardCharts } from './_components/DashboardCharts';
 import { computeExpenseSummary } from '@/lib/expenses/summary';
 import { amountsToBreakdownRows } from '@/lib/expenses/breakdown';
+import { buildGstMonthOptions, currentUtcMonthKey } from '@/lib/expenses/gst-months';
 import { formatInr as formatInvoiceInr, toRupees } from '@/lib/money';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -176,8 +177,11 @@ export default async function DashboardPage() {
   const expIncome = expenseSummary?.currentMonth.income ?? 0;
   const expExpenses = expenseSummary?.currentMonth.expenses ?? 0;
   const expNet = expenseSummary?.currentMonth.net ?? 0;
-  const gstToPay = expenseSummary?.gstToPay ?? 0;
-  const gstBreakdown = expenseSummary?.gstBreakdown ?? { cgst: 0, sgst: 0, igst: 0 };
+  const gstMonthOptions = buildGstMonthOptions(
+    expenseSummary?.gstByMonth ?? [],
+    formatExpenseInr,
+    currentUtcMonthKey(),
+  );
   const incomeTrend = trendLine(expenseSummary?.trends.incomePct ?? null, false);
   const expenseTrend = trendLine(expenseSummary?.trends.expensePct ?? null, true);
   const netTrend = trendLine(expenseSummary?.trends.netPct ?? null, false);
@@ -288,14 +292,7 @@ export default async function DashboardPage() {
             </div>
           </div>
           {/* Output GST */}
-          <OutputGstCard
-            totalFormatted={formatExpenseInr(gstToPay)}
-            breakdownFormatted={{
-              cgst: formatExpenseInr(gstBreakdown.cgst),
-              sgst: formatExpenseInr(gstBreakdown.sgst),
-              igst: formatExpenseInr(gstBreakdown.igst),
-            }}
-          />
+          <OutputGstCard months={gstMonthOptions} />
         </div>
       </div>
 

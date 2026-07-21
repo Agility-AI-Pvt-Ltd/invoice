@@ -17,6 +17,8 @@ import {
   CheckCircle2,
   Box,
 } from "lucide-react";
+import { computeInvoiceTotals } from "@/lib/gst";
+import { formatInr, toRupees } from "@/lib/money";
 
 type Customer = { id: string; name: string; stateCode: string | null; address?: string | null };
 type Product = {
@@ -409,26 +411,28 @@ export default function InvoiceForm({
   }, [effectiveStateCode, orgStateCode, manualTaxMode]);
 
   const totals = useMemo(() => {
-    let subTotal = 0,
-      cgst = 0,
-      sgst = 0,
-      igst = 0,
-      discountTotal = 0;
-    items.forEach((item) => {
-      const lineTotal = item.quantity * item.unitPrice;
-      const taxableAmount = lineTotal - (item.discount || 0);
-      const tax = (taxableAmount * item.taxRate) / 100;
-      
-      subTotal += lineTotal;
-      discountTotal += (item.discount || 0);
-      
-      if (isInterState) igst += tax;
-      else {
-        cgst += tax / 2;
-        sgst += tax / 2;
-      }
-    });
-    return { subTotal, cgst, sgst, igst, discountTotal, total: subTotal - discountTotal + cgst + sgst + igst };
+    const computed = computeInvoiceTotals(
+      items.map((item) => ({
+        description: item.description,
+        hsnCode: item.hsnCode,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        taxRate: item.taxRate,
+        discount: item.discount || 0,
+        productId: item.productId,
+      })),
+      isInterState,
+    );
+
+    return {
+      subTotal: computed.subTotal,
+      cgst: computed.cgstTotal,
+      sgst: computed.sgstTotal,
+      igst: computed.igstTotal,
+      discountTotal: computed.discountTotal,
+      total: computed.grandTotal,
+      processedItems: computed.processedItems,
+    };
   }, [items, isInterState]);
 
   const addItem = () =>
@@ -885,7 +889,9 @@ export default function InvoiceForm({
 
               <div className="divide-y divide-border">
                 {/* Item Rows */}
-                {items.map((item, index) => (
+                {items.map((item, index) => {
+                  const processed = totals.processedItems[index];
+                  return (
                   <div
                     key={item.id}
                     className="p-6 space-y-4 hover:bg-secondary/20 transition-colors relative group"
@@ -1051,7 +1057,10 @@ export default function InvoiceForm({
                               IGST ({item.taxRate}%)
                             </label>
                             <div className="text-xs font-bold tabular-nums text-primary">
-                              ₹{((item.quantity * item.unitPrice * item.taxRate) / 100).toFixed(2)}
+                              {formatInr(processed?.igstAmount ?? 0, {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
                             </div>
                           </div>
                         ) : null}
@@ -1061,7 +1070,12 @@ export default function InvoiceForm({
                             CGST ({item.taxRate / 2}%)
                           </label>
                           <div className="text-xs font-bold tabular-nums">
-                            ₹{!isInterState ? ((item.quantity * item.unitPrice * (item.taxRate / 2)) / 100).toFixed(2) : "0.00"}
+                            {isInterState
+                              ? formatInr(0, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                              : formatInr(processed?.cgstAmount ?? 0, {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
                           </div>
                         </div>
                         <div className="w-[90px]">
@@ -1069,7 +1083,12 @@ export default function InvoiceForm({
                             SGST ({item.taxRate / 2}%)
                           </label>
                           <div className="text-xs font-bold tabular-nums">
-                            ₹{!isInterState ? ((item.quantity * item.unitPrice * (item.taxRate / 2)) / 100).toFixed(2) : "0.00"}
+                            {isInterState
+                              ? formatInr(0, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                              : formatInr(processed?.sgstAmount ?? 0, {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
                           </div>
                         </div>
                         
@@ -1083,10 +1102,7 @@ export default function InvoiceForm({
                             step="0.01"
                             placeholder="0.00"
                             key={`total-${item.id}-${item.unitPrice}-${item.quantity}-${item.taxRate}-${item.discount}`}
-                            defaultValue={(
-                              ((item.quantity || 0) * (item.unitPrice || 0) - (item.discount || 0)) *
-                              (1 + (item.taxRate || 0) / 100)
-                            ).toFixed(2)}
+                            defaultValue={toRupees(processed?.total ?? 0).toFixed(2)}
                             onBlur={(e) => {
                               const totalInclTax = Number(e.target.value) || 0;
                               const qty = item.quantity || 1;
@@ -1108,7 +1124,8 @@ export default function InvoiceForm({
                       </div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div className="px-6 py-4 bg-secondary/10 flex justify-center border-t border-border">
@@ -1136,7 +1153,10 @@ export default function InvoiceForm({
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Subtotal</span>
                   <span className="font-semibold">
-                    ₹{Number(totals.subTotal).toLocaleString("en-IN")}
+                    {formatInr(totals.subTotal, {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
                   </span>
                 </div>
 
@@ -1147,7 +1167,11 @@ export default function InvoiceForm({
                       Total Discount
                     </span>
                     <span>
-                      -₹{Number(totals.discountTotal).toLocaleString("en-IN")}
+                      -
+                      {formatInr(totals.discountTotal, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
                     </span>
                   </div>
                 )}
@@ -1156,7 +1180,10 @@ export default function InvoiceForm({
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">IGST Total</span>
                     <span className="font-semibold">
-                      ₹{Number(totals.igst).toLocaleString("en-IN")}
+                      {formatInr(totals.igst, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
                     </span>
                   </div>
                 ) : (
@@ -1164,13 +1191,19 @@ export default function InvoiceForm({
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">CGST Total</span>
                       <span className="font-semibold">
-                        ₹{Number(totals.cgst).toLocaleString("en-IN")}
+                        {formatInr(totals.cgst, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
                       </span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">SGST Total</span>
                       <span className="font-semibold">
-                        ₹{Number(totals.sgst).toLocaleString("en-IN")}
+                        {formatInr(totals.sgst, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
                       </span>
                     </div>
                   </>
@@ -1179,7 +1212,10 @@ export default function InvoiceForm({
                 <div className="pt-4 border-t border-border flex justify-between">
                   <span className="text-base font-bold">Total Amount</span>
                   <span className="text-xl font-bold text-primary">
-                    ₹{Number(totals.total).toLocaleString("en-IN")}
+                    {formatInr(totals.total, {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
                   </span>
                 </div>
               </div>

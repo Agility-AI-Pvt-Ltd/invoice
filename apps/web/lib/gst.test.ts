@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { computeInvoiceTotals } from './gst';
+import { computeInvoiceTotals } from "./gst-compute";
 
 describe('computeInvoiceTotals', () => {
   const prev = process.env.NEXT_PUBLIC_AMOUNTS_IN_PAISE;
@@ -64,5 +64,20 @@ describe('computeInvoiceTotals', () => {
     );
     expect(result.subTotal).toBe(2950);
     expect(result.grandTotal).toBe(2950);
+  });
+
+  it('keeps grand total aligned with rounded tax lines (rupee mode)', () => {
+    process.env.NEXT_PUBLIC_AMOUNTS_IN_PAISE = 'false';
+    const result = computeInvoiceTotals(
+      [{ description: 'P', quantity: 1, unitPrice: 8474, taxRate: 18, discount: 0 }],
+      false,
+    );
+
+    expect(result.cgstTotal).toBe(763);
+    expect(result.sgstTotal).toBe(763);
+    expect(result.grandTotal).toBe(10000);
+    expect(result.grandTotal).toBe(
+      result.subTotal - result.discountTotal + result.cgstTotal + result.sgstTotal + result.igstTotal,
+    );
   });
 });

@@ -49,6 +49,16 @@ export type ExpenseDashboardSummary = {
     sgst: number;
     igst: number;
   };
+  gstByMonth: {
+    monthKey: string;
+    label: string;
+    total: number;
+    breakdown: {
+      cgst: number;
+      sgst: number;
+      igst: number;
+    };
+  }[];
 };
 
 function utcMonthBounds(year: number, month: number): { start: Date; end: Date } {
@@ -165,9 +175,11 @@ export async function computeExpenseSummary(
   ]);
 
   const chartMap = new Map<string, { income: number; expenses: number }>();
+  const gstMap = new Map<string, { cgst: number; sgst: number; igst: number }>();
   for (const m of sixMonths) {
     const key = `${m.year}-${String(m.month).padStart(2, "0")}`;
     chartMap.set(key, { income: 0, expenses: 0 });
+    gstMap.set(key, { cgst: 0, sgst: 0, igst: 0 });
   }
 
   const curBounds = utcMonthBounds(cy, cm);
@@ -230,6 +242,13 @@ export async function computeExpenseSummary(
       bucket.income += baseAmt;
     }
 
+    const gstBucket = gstMap.get(k);
+    if (gstBucket) {
+      gstBucket.cgst += cgst;
+      gstBucket.sgst += sgst;
+      gstBucket.igst += igst;
+    }
+
     const t = new Date(row.issueDate).getTime();
     if (t >= curBounds.start.getTime() && t <= curBounds.end.getTime()) {
       curIncome += baseAmt;
@@ -253,6 +272,21 @@ export async function computeExpenseSummary(
     const key = `${year}-${String(month).padStart(2, "0")}`;
     const b = chartMap.get(key) ?? { income: 0, expenses: 0 };
     return { monthKey: key, label, income: b.income, expenses: b.expenses };
+  });
+
+  const gstByMonth = sixMonths.map(({ year, month }) => {
+    const key = `${year}-${String(month).padStart(2, "0")}`;
+    const b = gstMap.get(key) ?? { cgst: 0, sgst: 0, igst: 0 };
+    const label = new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString(
+      "en-IN",
+      { month: "short", year: "numeric", timeZone: "UTC" },
+    );
+    return {
+      monthKey: key,
+      label,
+      total: b.cgst + b.sgst + b.igst,
+      breakdown: b,
+    };
   });
 
   const expenseBreakdown = [...expenseCategoryMonth.entries()]
@@ -326,6 +360,7 @@ export async function computeExpenseSummary(
       sgst: curMonthSgst,
       igst: curMonthIgst,
     },
+    gstByMonth,
   };
 }
 
