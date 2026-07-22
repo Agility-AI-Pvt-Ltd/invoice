@@ -397,6 +397,8 @@ export default function InvoiceForm({
 
   /** Line items whose rate was derived from a negotiated total (not manually edited). */
   const [negotiatedRates, setNegotiatedRates] = useState<Set<string>>(new Set());
+  /** In-progress total field text while user is negotiating. */
+  const [totalDrafts, setTotalDrafts] = useState<Record<string, string>>({});
 
   const selectedCustomer = useMemo(
     () => customers.find((c) => c.name === customerInput),
@@ -454,8 +456,63 @@ export default function InvoiceForm({
       },
     ]);
 
-  const removeItem = (id: string) =>
-    items.length > 1 && setItems((p) => p.filter((i) => i.id !== id));
+  const removeItem = (id: string) => {
+    if (items.length <= 1) return;
+    setItems((p) => p.filter((i) => i.id !== id));
+    setTotalDrafts((p) => {
+      const next = { ...p };
+      delete next[id];
+      return next;
+    });
+    setNegotiatedRates((p) => {
+      const next = new Set(p);
+      next.delete(id);
+      return next;
+    });
+  };
+
+  const applyNegotiatedTotal = (
+    item: LineItem,
+    totalInclTax: number,
+    currentTotalRupees: number,
+  ): number | null => {
+    if (!Number.isFinite(totalInclTax) || totalInclTax <= 0) return null;
+    const qty = Number(item.quantity);
+    if (qty <= 0) return null;
+    if (Math.abs(totalInclTax - currentTotalRupees) < 0.005) return null;
+
+    return deriveUnitPriceFromLineTotal(
+      totalInclTax,
+      qty,
+      item.taxRate,
+      item.discount || 0,
+      isInterState,
+    );
+  };
+
+  const commitNegotiatedTotal = (
+    item: LineItem,
+    totalInclTax: number,
+    currentTotalRupees: number,
+  ) => {
+    const newRate = applyNegotiatedTotal(item, totalInclTax, currentTotalRupees);
+    if (newRate === null) return;
+    setNegotiatedRates((prev) => new Set(prev).add(item.id));
+    updateItem(item.id, "unitPrice", newRate);
+  };
+
+  const resolveItemsForSave = (): LineItem[] =>
+    items.map((item, index) => {
+      const draft = totalDrafts[item.id];
+      const totalInclTax =
+        draft !== undefined
+          ? Number(draft)
+          : toRupees(totals.processedItems[index]?.total ?? 0);
+      const currentTotal = toRupees(totals.processedItems[index]?.total ?? 0);
+      const newRate = applyNegotiatedTotal(item, totalInclTax, currentTotal);
+      if (newRate === null) return item;
+      return { ...item, unitPrice: newRate };
+    });
 
   const updateItem = (
     id: string,
@@ -475,6 +532,20 @@ export default function InvoiceForm({
     setIsSubmitting(true);
     setError("");
     try {
+      const itemsToSave = resolveItemsForSave();
+      const saveTotals = computeInvoiceTotals(
+        itemsToSave.map((item) => ({
+          description: item.description,
+          hsnCode: item.hsnCode,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          taxRate: item.taxRate,
+          discount: item.discount || 0,
+          productId: item.productId,
+        })),
+        isInterState,
+      );
+
       const url =
         editMode && existingData
           ? `/api/invoices/${existingData.id}`
@@ -499,8 +570,8 @@ export default function InvoiceForm({
           template: selectedTemplate,
           placeOfSupply: effectiveStateCode,
           isInterState,
-          discountTotal: totals.discountTotal,
-          items: items.map((i) => ({
+          discountTotal: saveTotals.discountTotal,
+          items: itemsToSave.map((i) => ({
             productId: i.productId ?? undefined,
             description: i.description,
             hsnCode: i.hsnCode,
@@ -985,6 +1056,13 @@ export default function InvoiceForm({
                                 Number(e.target.value) || 0,
                               )
                             }
+                            onBlur={() => {
+                              setTotalDrafts((prev) => {
+                                const next = { ...prev };
+                                delete next[item.id];
+                                return next;
+                              });
+                            }}
                             className={`${inputCls} tabular-nums`}
                           />
                         </div>
@@ -1048,13 +1126,23 @@ export default function InvoiceForm({
                           </label>
                           <select
                             value={item.taxRate}
-                            onChange={(e) =>
+                            onChange={(e) => {
+                              setTotalDrafts((prev) => {
+                                const next = { ...prev };
+                                delete next[item.id];
+                                return next;
+                              });
+                              setNegotiatedRates((prev) => {
+                                const next = new Set(prev);
+                                next.delete(item.id);
+                                return next;
+                              });
                               updateItem(
                                 item.id,
                                 "taxRate",
                                 Number(e.target.value),
-                              )
-                            }
+                              );
+                            }}
                             className="w-full h-[42px] text-xs font-bold bg-secondary/50 border border-border rounded-xl px-2 py-1 focus:ring-2 focus:ring-primary/20"
                           >
                             {[0, 5, 12, 18, 28].map((r) => (
@@ -1121,25 +1209,27 @@ export default function InvoiceForm({
                             min="0"
                             step="0.01"
                             placeholder="0.00"
-                            key={`total-${item.id}-${item.unitPrice}-${item.quantity}-${item.taxRate}-${item.discount}-${isInterState}`}
-                            defaultValue={toRupees(processed?.total ?? 0).toFixed(2)}
-                            onBlur={(e) => {
-                              const totalInclTax = Number(e.target.value);
+                            value={
+                              totalDrafts[item.id] ??
+                              toRupees(processed?.total ?? 0).toFixed(2)
+                            }
+                            onChange={(e) => {
+                              const raw = e.target.value;
+                              setTotalDrafts((prev) => ({ ...prev, [item.id]: raw }));
+                              const totalInclTax = Number(raw);
                               if (!Number.isFinite(totalInclTax) || totalInclTax <= 0) return;
-
-                              const currentTotal = toRupees(processed?.total ?? 0);
-                              if (Math.abs(totalInclTax - currentTotal) < 0.005) return;
-
-                              const newRate = deriveUnitPriceFromLineTotal(
+                              commitNegotiatedTotal(
+                                item,
                                 totalInclTax,
-                                item.quantity || 1,
-                                item.taxRate,
-                                item.discount || 0,
-                                isInterState,
+                                toRupees(processed?.total ?? 0),
                               );
-
-                              setNegotiatedRates((prev) => new Set(prev).add(item.id));
-                              updateItem(item.id, "unitPrice", newRate);
+                            }}
+                            onBlur={() => {
+                              setTotalDrafts((prev) => {
+                                const next = { ...prev };
+                                delete next[item.id];
+                                return next;
+                              });
                             }}
                             onKeyDown={(e) => {
                               if (e.key === "Enter") {
@@ -1149,6 +1239,9 @@ export default function InvoiceForm({
                             }}
                             className={`${inputCls} border-primary/40 bg-white font-bold text-primary focus:ring-primary/30`}
                           />
+                          {item.quantity <= 0 && (
+                            <p className="text-[9px] text-amber-600 mt-1">Enter qty first</p>
+                          )}
                         </div>
                       </div>
                     </div>
