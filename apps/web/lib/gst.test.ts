@@ -1,5 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { computeInvoiceTotals, deriveUnitPriceFromLineTotal, deriveLineInputsFromTargetTotal } from "./gst-compute";
+import {
+  computeInvoiceTotals,
+  deriveUnitPriceFromLineTotal,
+  deriveLineInputsFromTargetTotal,
+  deriveRateOnlyFromTargetTotal,
+} from "./gst-compute";
 
 describe('computeInvoiceTotals', () => {
   const prev = process.env.NEXT_PUBLIC_AMOUNTS_IN_PAISE;
@@ -120,7 +125,7 @@ describe('deriveUnitPriceFromLineTotal', () => {
     expect(rate).toBeLessThanOrEqual(12712);
   });
 
-  it('snaps 36391 → 36390 request to nearest lower GST-valid total (36388)', () => {
+  it('rate-only: lowering total adjusts rate, not discount', () => {
     let rateFor391 = 0;
     for (let rate = 30000; rate <= 32000; rate++) {
       const r = computeInvoiceTotals(
@@ -134,23 +139,20 @@ describe('deriveUnitPriceFromLineTotal', () => {
     }
     expect(rateFor391).toBe(30839);
 
-    const inputs = deriveLineInputsFromTargetTotal(36390, 1, 18, false, {
-      currentUnitPrice: rateFor391,
-      currentDiscount: 0,
-      currentTotalRupees: 36391,
-    });
+    const newRate = deriveRateOnlyFromTargetTotal(
+      36390,
+      1,
+      18,
+      0,
+      false,
+      36391,
+    );
     const result = computeInvoiceTotals(
-      [{
-        description: 'P',
-        quantity: 1,
-        unitPrice: inputs.unitPrice,
-        taxRate: 18,
-        discount: inputs.discount,
-      }],
+      [{ description: 'P', quantity: 1, unitPrice: newRate, taxRate: 18, discount: 0 }],
       false,
     );
-    expect(result.grandTotal).toBe(36388);
-    expect(inputs.unitPrice).toBe(30839);
-    expect(inputs.discount).toBeGreaterThan(0);
+    expect(newRate).not.toBe(rateFor391);
+    expect(result.grandTotal).toBeLessThanOrEqual(36390);
+    expect(result.discountTotal).toBe(0);
   });
 });

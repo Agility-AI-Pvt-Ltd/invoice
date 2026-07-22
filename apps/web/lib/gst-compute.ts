@@ -385,3 +385,88 @@ export function deriveLineInputsFromTargetTotal(
     discount: currentDiscount,
   };
 }
+
+/** Adjust unit price only (discount unchanged) to reach a negotiated total. */
+export function deriveRateOnlyFromTargetTotal(
+  targetTotalRupees: number,
+  quantity: number,
+  taxRate: number,
+  discountRupees: number,
+  isInterState: boolean,
+  currentTotalRupees?: number,
+): number {
+  const qty = Number(quantity) || 1;
+  const disc = Number(discountRupees) || 0;
+  if (targetTotalRupees <= 0 || qty <= 0) return 0;
+
+  const scale = amountScale();
+  const targetStored = Math.round(targetTotalRupees * scale);
+  const currentStored =
+    currentTotalRupees !== undefined
+      ? Math.round(currentTotalRupees * scale)
+      : null;
+
+  const totalAt = (unitPrice: number) =>
+    lineTotalStored(qty, unitPrice, taxRate, disc, isInterState);
+
+  const mode: "exact" | "atMost" | "atLeast" =
+    currentStored === null
+      ? "exact"
+      : targetStored < currentStored
+        ? "atMost"
+        : targetStored > currentStored
+          ? "atLeast"
+          : "exact";
+
+  if (mode === "exact") {
+    return deriveUnitPriceFromLineTotal(
+      targetTotalRupees,
+      qty,
+      taxRate,
+      disc,
+      isInterState,
+    );
+  }
+
+  const estimate =
+    (targetTotalRupees / (1 + (Number(taxRate) || 0) / 100) + disc) / qty;
+  let low = 0;
+  let high = Math.max(estimate * 2, 1);
+
+  if (mode === "atMost") {
+    if (totalAt(0) > targetStored) return 0;
+    let best = 0;
+    for (let i = 0; i < 80; i++) {
+      const mid = (low + high) / 2;
+      const total = totalAt(mid);
+      if (total <= targetStored) {
+        best = mid;
+        low = mid;
+      } else {
+        high = mid;
+      }
+    }
+    let candidate = Number(best.toFixed(2));
+    while (candidate > 0 && totalAt(candidate) > targetStored) {
+      candidate = Number((candidate - 0.01).toFixed(2));
+    }
+    return candidate;
+  }
+
+  let best = high;
+  for (let i = 0; i < 80; i++) {
+    const mid = (low + high) / 2;
+    const total = totalAt(mid);
+    if (total >= targetStored) {
+      best = mid;
+      high = mid;
+    } else {
+      low = mid;
+    }
+  }
+  let candidate = Number(best.toFixed(2));
+  while (candidate < high * 2 && totalAt(candidate) < targetStored) {
+    candidate = Number((candidate + 0.01).toFixed(2));
+  }
+  return candidate;
+}
