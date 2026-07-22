@@ -201,3 +201,187 @@ function pickBestUnitPrice(
 
   return bestPrice;
 }
+
+export type LineInputsFromTotal = {
+  unitPrice: number;
+  discount: number;
+};
+
+function lineTotalStored(
+  quantity: number,
+  unitPriceRupees: number,
+  taxRate: number,
+  discountRupees: number,
+  isInterState: boolean,
+): number {
+  const result = computeInvoiceTotals(
+    [
+      {
+        description: "",
+        quantity,
+        unitPrice: unitPriceRupees,
+        taxRate,
+        discount: discountRupees,
+      },
+    ],
+    isInterState,
+  );
+  return result.processedItems[0]?.total ?? 0;
+}
+
+function tryDiscountForTargetTotal(
+  unitPriceRupees: number,
+  quantity: number,
+  taxRate: number,
+  isInterState: boolean,
+  targetStored: number,
+  mode: "exact" | "atMost" | "atLeast" = "exact",
+): LineInputsFromTotal | null {
+  const qty = Number(quantity) || 1;
+  const maxDisc = unitPriceRupees * qty;
+  const scale = amountScale();
+
+  const totalAt = (discountRupees: number) =>
+    lineTotalStored(qty, unitPriceRupees, taxRate, discountRupees, isInterState);
+
+  if (mode === "exact") {
+    let low = 0;
+    let high = maxDisc;
+    let bestDiscount = 0;
+    let bestDiff = Infinity;
+
+    for (let i = 0; i < 80; i++) {
+      const mid = (low + high) / 2;
+      const total = totalAt(mid);
+      const diff = Math.abs(total - targetStored);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        bestDiscount = mid;
+      }
+      if (total === targetStored) {
+        return {
+          unitPrice: Number(unitPriceRupees.toFixed(2)),
+          discount: Number(mid.toFixed(2)),
+        };
+      }
+      if (total > targetStored) {
+        low = mid;
+      } else {
+        high = mid;
+      }
+    }
+
+    if (bestDiff <= scale / 2) {
+      return {
+        unitPrice: Number(unitPriceRupees.toFixed(2)),
+        discount: Number(bestDiscount.toFixed(2)),
+      };
+    }
+    return null;
+  }
+
+  if (mode === "atMost") {
+    if (totalAt(0) <= targetStored) {
+      return { unitPrice: Number(unitPriceRupees.toFixed(2)), discount: 0 };
+    }
+    let low = 0;
+    let high = maxDisc;
+    for (let i = 0; i < 80; i++) {
+      const mid = (low + high) / 2;
+      if (totalAt(mid) > targetStored) {
+        low = mid;
+      } else {
+        high = mid;
+      }
+    }
+    return {
+      unitPrice: Number(unitPriceRupees.toFixed(2)),
+      discount: Number(high.toFixed(2)),
+    };
+  }
+
+  // atLeast — raise total by lowering discount / used when negotiating up
+  if (totalAt(0) >= targetStored) {
+    return { unitPrice: Number(unitPriceRupees.toFixed(2)), discount: 0 };
+  }
+  return null;
+}
+
+/**
+ * Resolve unit price + discount so the line total matches a negotiated amount.
+ * Uses discount fine-tuning when GST rounding prevents an exact rate-only match.
+ */
+export function deriveLineInputsFromTargetTotal(
+  targetTotalRupees: number,
+  quantity: number,
+  taxRate: number,
+  isInterState: boolean,
+  options?: {
+    currentUnitPrice?: number;
+    currentDiscount?: number;
+    currentTotalRupees?: number;
+  },
+): LineInputsFromTotal {
+  const qty = Number(quantity) || 1;
+  if (targetTotalRupees <= 0 || qty <= 0) return { unitPrice: 0, discount: 0 };
+
+  const scale = amountScale();
+  const targetStored = Math.round(targetTotalRupees * scale);
+  const currentUnitPrice = options?.currentUnitPrice ?? 0;
+  const currentDiscount = options?.currentDiscount ?? 0;
+  const currentTotalStored =
+    options?.currentTotalRupees !== undefined
+      ? Math.round(options.currentTotalRupees * scale)
+      : currentUnitPrice > 0
+        ? lineTotalStored(qty, currentUnitPrice, taxRate, currentDiscount, isInterState)
+        : null;
+
+  const discountMode: "exact" | "atMost" | "atLeast" =
+    currentTotalStored === null
+      ? "exact"
+      : targetStored < currentTotalStored
+        ? "atMost"
+        : targetStored > currentTotalStored
+          ? "atLeast"
+          : "exact";
+
+  // Prefer discount tweak at current list rate (works for small ₹ negotiations).
+  if (currentUnitPrice > 0) {
+    const viaCurrentRate = tryDiscountForTargetTotal(
+      currentUnitPrice,
+      qty,
+      taxRate,
+      isInterState,
+      targetStored,
+      discountMode,
+    );
+    if (viaCurrentRate) return viaCurrentRate;
+  }
+
+  const derivedRate = deriveUnitPriceFromLineTotal(
+    targetTotalRupees,
+    qty,
+    taxRate,
+    0,
+    isInterState,
+  );
+
+  if (lineTotalStored(qty, derivedRate, taxRate, 0, isInterState) === targetStored) {
+    return { unitPrice: derivedRate, discount: 0 };
+  }
+
+  const viaDerivedRate = tryDiscountForTargetTotal(
+    derivedRate,
+    qty,
+    taxRate,
+    isInterState,
+    targetStored,
+    discountMode,
+  );
+  if (viaDerivedRate) return viaDerivedRate;
+
+  return {
+    unitPrice: derivedRate,
+    discount: currentDiscount,
+  };
+}

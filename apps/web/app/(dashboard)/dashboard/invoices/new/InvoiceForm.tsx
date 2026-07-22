@@ -18,7 +18,7 @@ import {
   Box,
 } from "lucide-react";
 import { computeInvoiceTotals } from "@/lib/gst";
-import { deriveUnitPriceFromLineTotal } from "@/lib/gst-compute";
+import { deriveLineInputsFromTargetTotal } from "@/lib/gst-compute";
 import { formatInr, toRupees } from "@/lib/money";
 
 type Customer = { id: string; name: string; stateCode: string | null; address?: string | null };
@@ -475,19 +475,46 @@ export default function InvoiceForm({
     item: LineItem,
     totalInclTax: number,
     currentTotalRupees: number,
-  ): number | null => {
+  ): { unitPrice: number; discount: number } | null => {
     if (!Number.isFinite(totalInclTax) || totalInclTax <= 0) return null;
     const qty = Number(item.quantity);
     if (qty <= 0) return null;
-    if (Math.abs(totalInclTax - currentTotalRupees) < 0.005) return null;
 
-    return deriveUnitPriceFromLineTotal(
+    const result = deriveLineInputsFromTargetTotal(
       totalInclTax,
       qty,
       item.taxRate,
-      item.discount || 0,
       isInterState,
+      {
+        currentUnitPrice: item.unitPrice,
+        currentDiscount: item.discount || 0,
+        currentTotalRupees,
+      },
     );
+
+    const achieved = toRupees(
+      computeInvoiceTotals(
+        [
+          {
+            description: item.description,
+            quantity: qty,
+            unitPrice: result.unitPrice,
+            taxRate: item.taxRate,
+            discount: result.discount,
+          },
+        ],
+        isInterState,
+      ).processedItems[0]?.total ?? 0,
+    );
+
+    if (Math.abs(achieved - currentTotalRupees) < 0.005) return null;
+
+    const unchanged =
+      result.unitPrice === item.unitPrice &&
+      result.discount === (item.discount || 0);
+    if (unchanged) return null;
+
+    return result;
   };
 
   const commitNegotiatedTotal = (
@@ -495,10 +522,21 @@ export default function InvoiceForm({
     totalInclTax: number,
     currentTotalRupees: number,
   ) => {
-    const newRate = applyNegotiatedTotal(item, totalInclTax, currentTotalRupees);
-    if (newRate === null) return;
+    const next = applyNegotiatedTotal(item, totalInclTax, currentTotalRupees);
+    if (!next) return;
     setNegotiatedRates((prev) => new Set(prev).add(item.id));
-    updateItem(item.id, "unitPrice", newRate);
+    setTotalDrafts((prev) => {
+      const next = { ...prev };
+      delete next[item.id];
+      return next;
+    });
+    setItems((prev) =>
+      prev.map((row) =>
+        row.id === item.id
+          ? { ...row, unitPrice: next.unitPrice, discount: next.discount }
+          : row,
+      ),
+    );
   };
 
   const resolveItemsForSave = (): LineItem[] =>
@@ -509,9 +547,9 @@ export default function InvoiceForm({
           ? Number(draft)
           : toRupees(totals.processedItems[index]?.total ?? 0);
       const currentTotal = toRupees(totals.processedItems[index]?.total ?? 0);
-      const newRate = applyNegotiatedTotal(item, totalInclTax, currentTotal);
-      if (newRate === null) return item;
-      return { ...item, unitPrice: newRate };
+      const next = applyNegotiatedTotal(item, totalInclTax, currentTotal);
+      if (!next) return item;
+      return { ...item, unitPrice: next.unitPrice, discount: next.discount };
     });
 
   const updateItem = (
@@ -1202,7 +1240,7 @@ export default function InvoiceForm({
                             Total (Incl. Tax)
                           </label>
                           <p className="text-[9px] text-primary/70 mb-1.5 leading-tight">
-                            Negotiate here — rate updates automatically
+                            Negotiate here — rate or discount adjusts to match
                           </p>
                           <input
                             type="number"
