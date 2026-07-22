@@ -18,6 +18,7 @@ import {
   Box,
 } from "lucide-react";
 import { computeInvoiceTotals } from "@/lib/gst";
+import { deriveUnitPriceFromLineTotal } from "@/lib/gst-compute";
 import { formatInr, toRupees } from "@/lib/money";
 
 type Customer = { id: string; name: string; stateCode: string | null; address?: string | null };
@@ -393,6 +394,9 @@ export default function InvoiceForm({
       },
     ],
   );
+
+  /** Line items whose rate was derived from a negotiated total (not manually edited). */
+  const [negotiatedRates, setNegotiatedRates] = useState<Set<string>>(new Set());
 
   const selectedCustomer = useMemo(
     () => customers.find((c) => c.name === customerInput),
@@ -987,7 +991,13 @@ export default function InvoiceForm({
                         <div className="w-[130px]">
                           <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1 block flex items-center gap-1">
                             Rate (₹)
-                            <span className="text-[8px] bg-primary/10 text-primary px-1 rounded">Edit</span>
+                            {negotiatedRates.has(item.id) ? (
+                              <span className="text-[8px] bg-amber-500/15 text-amber-700 px-1 rounded" title="Adjusted from negotiated total">
+                                Adjusted
+                              </span>
+                            ) : (
+                              <span className="text-[8px] bg-primary/10 text-primary px-1 rounded">Edit</span>
+                            )}
                           </label>
                           <input
                             type="number"
@@ -995,14 +1005,21 @@ export default function InvoiceForm({
                             step="0.01"
                             placeholder="0.00"
                             value={item.unitPrice === 0 ? "" : Number(item.unitPrice.toFixed(2))}
-                            onChange={(e) =>
+                            onChange={(e) => {
+                              setNegotiatedRates((prev) => {
+                                const next = new Set(prev);
+                                next.delete(item.id);
+                                return next;
+                              });
                               updateItem(
                                 item.id,
                                 "unitPrice",
                                 Number(e.target.value) || 0,
-                              )
-                            }
-                            className={`${inputCls} border-primary/20 focus:border-primary shadow-sm`}
+                              );
+                            }}
+                            className={`${inputCls} border-primary/20 focus:border-primary shadow-sm ${
+                              negotiatedRates.has(item.id) ? "bg-amber-500/5 border-amber-500/30" : ""
+                            }`}
                           />
                         </div>
                         <div className="w-[100px]">
@@ -1092,28 +1109,40 @@ export default function InvoiceForm({
                           </div>
                         </div>
                         
-                        <div className="w-[140px] ml-auto">
+                        <div className="w-[160px] ml-auto">
                           <label className="text-[10px] font-bold text-primary uppercase tracking-widest mb-1 block">
                             Total (Incl. Tax)
                           </label>
+                          <p className="text-[9px] text-primary/70 mb-1.5 leading-tight">
+                            Negotiate here — rate updates automatically
+                          </p>
                           <input
                             type="number"
                             min="0"
                             step="0.01"
                             placeholder="0.00"
-                            key={`total-${item.id}-${item.unitPrice}-${item.quantity}-${item.taxRate}-${item.discount}`}
+                            key={`total-${item.id}-${item.unitPrice}-${item.quantity}-${item.taxRate}-${item.discount}-${isInterState}`}
                             defaultValue={toRupees(processed?.total ?? 0).toFixed(2)}
                             onBlur={(e) => {
-                              const totalInclTax = Number(e.target.value) || 0;
-                              const qty = item.quantity || 1;
-                              const taxRate = item.taxRate || 0;
-                              const unitPrice = item.unitPrice || 0;
-                              
-                              const newDiscount = (qty * unitPrice) - (totalInclTax / (1 + taxRate / 100));
-                              updateItem(item.id, "discount", Number(Math.max(0, newDiscount).toFixed(2)));
+                              const totalInclTax = Number(e.target.value);
+                              if (!Number.isFinite(totalInclTax) || totalInclTax <= 0) return;
+
+                              const currentTotal = toRupees(processed?.total ?? 0);
+                              if (Math.abs(totalInclTax - currentTotal) < 0.005) return;
+
+                              const newRate = deriveUnitPriceFromLineTotal(
+                                totalInclTax,
+                                item.quantity || 1,
+                                item.taxRate,
+                                item.discount || 0,
+                                isInterState,
+                              );
+
+                              setNegotiatedRates((prev) => new Set(prev).add(item.id));
+                              updateItem(item.id, "unitPrice", newRate);
                             }}
                             onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
+                              if (e.key === "Enter") {
                                 e.preventDefault();
                                 (e.target as HTMLInputElement).blur();
                               }

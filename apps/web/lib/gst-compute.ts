@@ -116,3 +116,88 @@ export function computeInvoiceTotals(items: LineInput[], isInterState: boolean):
     processedItems,
   };
 }
+
+/** Back-calculate unit price (₹) from a negotiated tax-inclusive line total. */
+export function deriveUnitPriceFromLineTotal(
+  targetTotalRupees: number,
+  quantity: number,
+  taxRate: number,
+  discountRupees: number,
+  isInterState: boolean,
+): number {
+  const qty = Number(quantity) || 1;
+  const disc = Number(discountRupees) || 0;
+  const rate = Number(taxRate) || 0;
+  if (targetTotalRupees <= 0 || qty <= 0) return 0;
+
+  const scale = amountScale();
+  const targetStored = Math.round(targetTotalRupees * scale);
+
+  const lineTotalForPrice = (unitPriceRupees: number) => {
+    const result = computeInvoiceTotals(
+      [
+        {
+          description: "",
+          quantity: qty,
+          unitPrice: unitPriceRupees,
+          taxRate: rate,
+          discount: disc,
+        },
+      ],
+      isInterState,
+    );
+    return result.processedItems[0]?.total ?? 0;
+  };
+
+  const taxableEstimate = targetTotalRupees / (1 + rate / 100);
+  let low = 0;
+  let high = Math.max((taxableEstimate + disc) / qty * 2, 1);
+  let best = (taxableEstimate + disc) / qty;
+
+  for (let i = 0; i < 64; i++) {
+    const mid = (low + high) / 2;
+    const computed = lineTotalForPrice(mid);
+
+    if (Math.abs(computed - targetStored) <= scale / 2) {
+      return pickBestUnitPrice(mid, lineTotalForPrice, targetStored, scale);
+    }
+
+    if (computed < targetStored) {
+      low = mid;
+      best = mid;
+    } else {
+      high = mid;
+    }
+  }
+
+  return pickBestUnitPrice(best, lineTotalForPrice, targetStored, scale);
+}
+
+function pickBestUnitPrice(
+  estimate: number,
+  lineTotalForPrice: (price: number) => number,
+  targetStored: number,
+  scale: number,
+): number {
+  const candidates = new Set<number>();
+  const base = Math.round(estimate * 100) / 100;
+  for (let delta = -0.05; delta <= 0.05; delta += 0.01) {
+    candidates.add(Number((base + delta).toFixed(2)));
+  }
+  candidates.add(Number(estimate.toFixed(2)));
+
+  let bestPrice = base;
+  let bestDiff = Infinity;
+
+  for (const price of candidates) {
+    if (price < 0) continue;
+    const diff = Math.abs(lineTotalForPrice(price) - targetStored);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      bestPrice = price;
+    }
+    if (diff <= scale / 2) return price;
+  }
+
+  return bestPrice;
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { computeInvoiceTotals } from "./gst-compute";
+import { computeInvoiceTotals, deriveUnitPriceFromLineTotal } from "./gst-compute";
 
 describe('computeInvoiceTotals', () => {
   const prev = process.env.NEXT_PUBLIC_AMOUNTS_IN_PAISE;
@@ -79,5 +79,44 @@ describe('computeInvoiceTotals', () => {
     expect(result.grandTotal).toBe(
       result.subTotal - result.discountTotal + result.cgstTotal + result.sgstTotal + result.igstTotal,
     );
+  });
+});
+
+describe('deriveUnitPriceFromLineTotal', () => {
+  const prev = process.env.NEXT_PUBLIC_AMOUNTS_IN_PAISE;
+
+  beforeEach(() => {
+    process.env.NEXT_PUBLIC_AMOUNTS_IN_PAISE = 'false';
+  });
+
+  afterEach(() => {
+    if (prev === undefined) delete process.env.NEXT_PUBLIC_AMOUNTS_IN_PAISE;
+    else process.env.NEXT_PUBLIC_AMOUNTS_IN_PAISE = prev;
+  });
+
+  it('back-calculates rate from negotiated total (intra-state)', () => {
+    const rate = deriveUnitPriceFromLineTotal(14000, 1, 18, 0, false);
+    const result = computeInvoiceTotals(
+      [{ description: 'P', quantity: 1, unitPrice: rate, taxRate: 18, discount: 0 }],
+      false,
+    );
+    expect(result.grandTotal).toBe(14000);
+  });
+
+  it('round-trips the 12712 → 15000 example', () => {
+    const forward = computeInvoiceTotals(
+      [{ description: 'P', quantity: 1, unitPrice: 12712, taxRate: 18, discount: 0 }],
+      false,
+    );
+    expect(forward.grandTotal).toBe(15000);
+
+    const rate = deriveUnitPriceFromLineTotal(15000, 1, 18, 0, false);
+    const roundTrip = computeInvoiceTotals(
+      [{ description: 'P', quantity: 1, unitPrice: rate, taxRate: 18, discount: 0 }],
+      false,
+    );
+    expect(roundTrip.grandTotal).toBe(15000);
+    expect(rate).toBeGreaterThanOrEqual(12711);
+    expect(rate).toBeLessThanOrEqual(12712);
   });
 });
