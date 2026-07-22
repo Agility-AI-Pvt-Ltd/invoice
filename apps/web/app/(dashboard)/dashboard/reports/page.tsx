@@ -32,11 +32,28 @@ export default function ReportsPage() {
     setError('');
     try {
       const res = await fetch(`/api/reports/gstr1?${periodQuery}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const text = await res.text();
+      let data: any = null;
+      try {
+        data = text ? JSON.parse(text) : null;
+      } catch {
+        throw new Error(
+          res.ok
+            ? 'Server returned an invalid response.'
+            : `Report failed (HTTP ${res.status}). If this persists, check database connectivity.`,
+        );
+      }
+      if (!res.ok) {
+        throw new Error(
+          (typeof data?.error === 'string' && data.error) ||
+            data?.message ||
+            `Report failed (HTTP ${res.status})`,
+        );
+      }
       setPreview(data);
     } catch (e: any) {
-      setError(e.message);
+      setPreview(null);
+      setError(e.message || 'Failed to generate report');
     } finally {
       setLoading(false);
     }
