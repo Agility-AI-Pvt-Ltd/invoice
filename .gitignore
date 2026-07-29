@@ -15,6 +15,9 @@ node_modules
 # Testing
 coverage
 
+# Local load-test harness (k6 scripts, seeded users, results)
+loadtests/
+
 # Turbo
 .turbo
 
