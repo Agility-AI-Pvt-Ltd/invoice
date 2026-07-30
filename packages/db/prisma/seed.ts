@@ -259,6 +259,10 @@ function normalizeSlug(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
+function normalizeEmailLocal(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "");
+}
+
 function randomUuid(): string {
   return randomUUID();
 }
@@ -342,7 +346,8 @@ function makeBundle(index: number, options: SeedOptions, passwordHash: string): 
 
   const orgLabel = `${person.last} ${choose(ORG_TEMPLATES, index * 3)}`;
   const slug = `${normalizeSlug(orgLabel)}-${pad(index + 1, 4)}`;
-  const email = index === 0 ? "demo@invoice.app" : `user${pad(index + 1, 4)}@invoice.app`;
+  const emailBase = `${normalizeEmailLocal(person.first)}.${normalizeEmailLocal(person.last)}${index + 1}`;
+  const email = index === 0 ? "demo@invoice.app" : `${emailBase}@invoicely.com`;
   const phone = `9${pad(100000000 + index, 9)}`.slice(0, 10);
 
   const user: SeedUser = {
