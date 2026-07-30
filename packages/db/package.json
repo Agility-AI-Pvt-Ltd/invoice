@@ -8,9 +8,11 @@
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
     "db:migrate-from-old": "tsx scripts/migrate-old-db.ts",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "db:seed-fake-users": "tsx scripts/seed-fake-users.ts"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "@prisma/adapter-pg": "^6.0.0",
     "@prisma/client": "^6.0.0",
     "dotenv": "^16.0.0",

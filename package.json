@@ -7,10 +7,25 @@
     "process-recurring": "npm run process-recurring -w web",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
-    "check-types": "turbo run check-types"
+    "check-types": "turbo run check-types",
+    "loadtest:bootstrap": "tsx loadtests/scripts/bootstrap-users.ts",
+    "loadtest:dry-run": "tsx loadtests/scripts/bootstrap-users.ts --count 10",
+    "loadtest:verify": "tsx loadtests/scripts/verify-sessions.ts",
+    "loadtest:smoke": "node loadtests/scripts/run-k6.mjs smoke",
+    "loadtest:run": "node loadtests/scripts/run-k6.mjs load",
+    "loadtest:stepup": "node loadtests/scripts/run-k6.mjs stepup",
+    "loadtest:expensive": "node loadtests/scripts/run-k6.mjs expensive",
+    "loadtest:gce": "powershell -NoProfile -ExecutionPolicy Bypass -File loadtests/scripts/gce-loadgen.ps1",
+    "loadtest:gce:up": "npm run loadtest:gce -- -Action up",
+    "loadtest:gce:run": "npm run loadtest:gce -- -Action run",
+    "loadtest:gce:results": "npm run loadtest:gce -- -Action results",
+    "loadtest:gce:status": "npm run loadtest:gce -- -Action status",
+    "loadtest:gce:down": "npm run loadtest:gce -- -Action down",
+    "db:seed-fake-users": "npm run db:seed-fake-users -w @repo/db --"
   },
   "devDependencies": {
     "prettier": "^3.7.4",
+    "tsx": "^4.19.0",
     "turbo": "^2.9.6",
     "typescript": "5.9.2"
   },
