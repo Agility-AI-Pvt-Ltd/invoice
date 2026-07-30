@@ -7,16 +7,12 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
-<<<<<<< Updated upstream
     "db:migrate-from-old": "tsx scripts/migrate-old-db.ts",
-    "db:studio": "prisma studio"
-=======
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
->>>>>>> Stashed changes
   },
   "dependencies": {
     "@prisma/adapter-pg": "^6.0.0",
