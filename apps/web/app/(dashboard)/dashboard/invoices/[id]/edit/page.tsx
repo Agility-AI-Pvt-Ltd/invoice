@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import InvoiceForm from '../../new/InvoiceForm';
+import { toRupees } from '@/lib/money';
 
 export default async function EditInvoicePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -24,7 +25,11 @@ export default async function EditInvoicePage({ params }: { params: Promise<{ id
       where: { organizationId },
       select: { id: true, name: true, price: true, hsnCode: true, taxRate: true, productKind: true },
       orderBy: { name: 'asc' },
-    }),
+    }).then(products => products.map(p => ({
+      ...p,
+      price: toRupees(p.price),
+      taxRate: p.taxRate.toNumber()
+    }))),
     prisma.organization.findUnique({ where: { id: organizationId } }),
   ]);
 
@@ -65,9 +70,9 @@ export default async function EditInvoicePage({ params }: { params: Promise<{ id
       description: item.description,
       hsnCode: item.hsnCode || '',
       quantity: Number(item.quantity),
-      unitPrice: Number(item.unitPrice),
+      unitPrice: toRupees(item.unitPrice),
       taxRate: Number(item.taxRate),
-      discount: Number((item as any).discount || 0),
+      discount: toRupees(item.discount),
     })),
   };
 

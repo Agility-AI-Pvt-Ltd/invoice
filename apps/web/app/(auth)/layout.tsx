@@ -82,12 +82,11 @@ export default function AuthLayout({
             </p>
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center font-bold text-primary text-xs">
-                RS
+                AC
               </div>
               <div>
-                <p className="text-xs font-bold">Ryan Shukla</p>
                 <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">
-                  Founder, Agility AI
+                  Verified Customer
                 </p>
               </div>
             </div>

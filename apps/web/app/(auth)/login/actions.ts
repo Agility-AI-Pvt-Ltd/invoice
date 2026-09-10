@@ -40,7 +40,8 @@ export async function loginUser(
     };
   }
 
-  const { email, password } = validatedFields.data;
+  const email = validatedFields.data.email.trim().toLowerCase();
+  const { password } = validatedFields.data;
 
   const headerStore = await headers();
   const ip =
@@ -55,7 +56,10 @@ export async function loginUser(
   let redirectPath = "/dashboard";
 
   try {
-    const user = await prisma.user.findUnique({ where: { email } });
+    // Case-insensitive: older rows may store mixed-case emails from registration.
+    const user = await prisma.user.findFirst({
+      where: { email: { equals: email, mode: "insensitive" } },
+    });
 
     if (!user || !user.password) {
       return { message: "Invalid email or password." };
@@ -81,7 +85,13 @@ export async function loginUser(
     }
   } catch (error) {
     logger.error("auth:login", "Unexpected login failure", error, { email });
-    return { message: "An error occurred during login. Please try again." };
+
+    const message =
+      error instanceof Error && /DATABASE_URL|connect|ECONNREFUSED|timeout/i.test(error.message)
+        ? "Cannot reach the database. Check DATABASE_URL in your deployment settings."
+        : "An error occurred during login. Please try again.";
+
+    return { message };
   }
 
   redirect(redirectPath);

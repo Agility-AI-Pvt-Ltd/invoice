@@ -8,8 +8,21 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 function createPrismaClient() {
+  const connectionString = process.env.DATABASE_URL?.trim();
+  if (!connectionString) {
+    throw new Error(
+      "DATABASE_URL is not set. Add it to .env locally or Vercel project settings.",
+    );
+  }
+
   const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString,
+    // Neon PgBouncer (transaction mode): keep pool small to avoid
+    // stale connections and "Authentication timed out" errors.
+    max: 5,
+    idleTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 15_000,
+    allowExitOnIdle: false,
   });
 
   const adapter = new PrismaPg(pool);
@@ -25,24 +38,25 @@ function createPrismaClient() {
 
 export const prisma = globalForPrisma.prisma ?? createPrismaClient();
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+// Reuse one client per serverless instance (Vercel, etc.) to avoid connection storms.
+globalForPrisma.prisma = prisma;
 
 // Export types specifically to avoid Turbopack wildcard export warnings for CJS
-export type { 
+export type {
   User,
-  Product, 
-  Invoice, 
-  InvoiceItem, 
-  Customer, 
-  Organization, 
-  ActivityLog
+  Product,
+  Invoice,
+  InvoiceItem,
+  Customer,
+  Organization,
+  ActivityLog,
 } from "@prisma/client";
 
 // Export enums explicitly
-export { 
-  InvoiceStatus, 
+export {
+  InvoiceStatus,
   ProductKind,
   InventoryMovementType,
   ExpenseLedgerKind,
-  Prisma
+  Prisma,
 } from "@prisma/client";

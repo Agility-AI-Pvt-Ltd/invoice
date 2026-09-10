@@ -1,0 +1,103 @@
+# Build → push to ECR → migrate Neon → redeploy EC2 (optional SSH step).
+#
+# GitHub secrets:
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY  (or use OIDC + IAM role)
+#   AWS_ACCOUNT_ID                            e.g. 429965275836
+#   NEXT_PUBLIC_APP_URL                       e.g. https://invoice.yourdomain.com
+#   DATABASE_URL                              Neon *direct* URL for prisma migrate deploy
+#   EC2_HOST, EC2_SSH_KEY                      optional — skip deploy job if unset
+
+name: Deploy to ECR
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy_to_ec2:
+        description: SSH to EC2 and restart containers after push
+        type: boolean
+        default: false
+
+env:
+  AWS_REGION: ap-south-1
+  ECR_REPOSITORY: invoicely-prod
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - id: meta
+        run: |
+          IMAGE="${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}"
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "tag=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}
+        run: |
+          docker build \
+            --build-arg NEXT_PUBLIC_APP_URL="${{ secrets.NEXT_PUBLIC_APP_URL }}" \
+            -t "${IMAGE}:${{ github.sha }}" \
+            -t "${IMAGE}:latest" \
+            .
+          docker push "${IMAGE}:${{ github.sha }}"
+          docker push "${IMAGE}:latest"
+
+  migrate:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Apply database migrations (Neon direct URL)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          npm ci --no-audit --no-fund
+          npx prisma migrate deploy --schema packages/db/prisma/schema.prisma
+
+  deploy-ec2:
+    runs-on: ubuntu-latest
+    needs: [build-and-push, migrate]
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy_to_ec2
+    steps:
+      - name: Pull image and restart on EC2
+        uses: appleboy/ssh-action@v1
+        env:
+          ECR_IMAGE: ${{ needs.build-and-push.outputs.image }}:latest
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: ECR_IMAGE
+          script: |
+            set -e
+            cd ~/invoice
+            grep -q '^ECR_IMAGE=' .env && sed -i "s|^ECR_IMAGE=.*|ECR_IMAGE=${ECR_IMAGE}|" .env || echo "ECR_IMAGE=${ECR_IMAGE}" >> .env
+            aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-south-1.amazonaws.com
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d

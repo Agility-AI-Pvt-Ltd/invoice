@@ -318,12 +318,12 @@ async function createQuickInvoice(orgId: string, payload: any) {
       }
     }
 
-    let subTotal = new Prisma.Decimal(0);
+    let subTotal = 0;
     const invoiceItems = items.map((i: any) => {
       const qty = Number(i.quantity) || 1;
       const price = Number(i.unitPrice) || 0;
-      const total = new Prisma.Decimal(qty * price);
-      subTotal = subTotal.plus(total);
+      const total = Math.round(qty * price);
+      subTotal += total;
       
       return {
         description: i.description || "Service",

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Plus, Search, Box, Filter, Download, MoreHorizontal, TrendingUp } from 'lucide-react';
 import ProductModal from './ProductModal';
 import { ProductActions } from './ProductActions';
+import { toRupees } from '@/lib/money';
 
 export default async function ProductsPage({
   searchParams,
@@ -23,7 +24,12 @@ export default async function ProductsPage({
       ] : undefined
     },
     orderBy: { createdAt: 'desc' },
-  });
+  }).then(products => products.map(p => ({
+    ...p,
+    // UI + ProductModal work in rupees
+    price: toRupees(p.price),
+    taxRate: p.taxRate.toNumber()
+  })));
 
   return (
     <div className="p-8 max-w-6xl mx-auto w-full space-y-8 animate-in fade-in duration-700">

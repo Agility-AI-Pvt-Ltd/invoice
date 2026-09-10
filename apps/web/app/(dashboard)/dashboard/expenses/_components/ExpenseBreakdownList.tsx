@@ -67,7 +67,7 @@ export function ExpenseBreakdownList({ rows }: { rows: BreakdownRow[] }) {
       </div>
 
       {/* Categories breakdown details */}
-      <ul className="flex-1 space-y-3.5 w-full">
+      <ul className="flex-1 space-y-3.5 min-w-0">
         {pieData.map((row) => (
           <li key={row.category} className="group">
             <div className="flex items-center justify-between gap-3 text-sm">

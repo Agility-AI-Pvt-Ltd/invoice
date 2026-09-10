@@ -6,8 +6,25 @@ import {
   ArrowLeft, Pencil, Plus, ArrowUpRight, Clock, CheckCircle2, AlertCircle, TrendingUp, FileText, ChevronRight 
 } from 'lucide-react';
 import InvoiceActions from './InvoiceActions';
+import { formatInr, toRupees } from '@/lib/money';
 
-const fmt = (n: number | any) => `₹${Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const fmt = (n: number | any) => formatInr(n, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+function resolvedInvoiceTotal(invoice: {
+  subTotal: number;
+  discountTotal: number;
+  cgstTotal: number;
+  sgstTotal: number;
+  igstTotal: number;
+}) {
+  return (
+    Number(invoice.subTotal ?? 0) -
+    Number(invoice.discountTotal ?? 0) +
+    Number(invoice.cgstTotal ?? 0) +
+    Number(invoice.sgstTotal ?? 0) +
+    Number(invoice.igstTotal ?? 0)
+  );
+}
 
 export default async function InvoiceViewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -30,8 +47,11 @@ export default async function InvoiceViewPage({ params }: { params: Promise<{ id
   
   // If we have explicit tax values, use them. Otherwise, fall back to state-code detection.
   const isInterState = hasIgst ? true : hasCgst ? false : (!!orgState && !!supplyState && orgState !== supplyState);
-  const totalPaid = invoice.payments.reduce((s, p) => s + Number(p.amount), 0);
-  const remaining = Number(invoice.total) - totalPaid;
+  const displayTotalPaise = resolvedInvoiceTotal(invoice);
+  const totalPaidPaise = invoice.payments.reduce((s, p) => s + Number(p.amount), 0);
+  const totalPaid = toRupees(totalPaidPaise);
+  const totalInRupees = toRupees(displayTotalPaise);
+  const remaining = totalInRupees - totalPaid;
   const template = (invoice.organization as any).defaultTemplate || 'modern';
 
   return (
@@ -61,7 +81,7 @@ export default async function InvoiceViewPage({ params }: { params: Promise<{ id
         <InvoiceActions
           invoiceId={invoice.id}
           status={invoice.status as any}
-          total={Number(invoice.total)}
+          total={totalInRupees}
           paid={totalPaid}
           defaultTemplate={template}
           cancelRemark={invoice.cancelRemark}
@@ -106,7 +126,7 @@ export default async function InvoiceViewPage({ params }: { params: Promise<{ id
               <p className={`text-sm font-bold uppercase tracking-widest ${remaining <= 0 ? "text-green-600" : "text-amber-600"}`}>
                 {remaining <= 0 ? "Fully Paid" : "Partially Paid"}
               </p>
-              <p className="text-muted-foreground text-xs font-medium">₹{totalPaid.toLocaleString('en-IN')} collected so far</p>
+              <p className="text-muted-foreground text-xs font-medium">?{totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} collected so far</p>
             </div>
           </div>
           {remaining > 0 && (
@@ -163,7 +183,7 @@ export default async function InvoiceViewPage({ params }: { params: Promise<{ id
   );
 }
 
-/* ─── TEMPLATE COMPONENTS ────────────────────────────────────────── */
+/* ??? TEMPLATE COMPONENTS ?????????????????????????????????????????? */
 
 function ModernTemplate({ invoice, isInterState }: any) {
   return (
@@ -294,7 +314,7 @@ function ModernTemplate({ invoice, isInterState }: any) {
           )}
           <div className="pt-4 border-t border-white/10 flex justify-between items-end">
             <span className="text-xs font-black uppercase tracking-[0.2em] text-primary">Grand Total</span>
-            <span className="text-3xl font-black italic">{fmt(invoice.total)}</span>
+            <span className="text-3xl font-black italic">{fmt(resolvedInvoiceTotal(invoice))}</span>
           </div>
         </div>
       </div>
@@ -414,7 +434,7 @@ function ClassicTemplate({ invoice, isInterState }: any) {
           )}
           <div className="flex justify-between bg-slate-900 text-white p-4 rounded-xl items-end mt-6">
             <span className="text-[10px] font-black uppercase tracking-[0.2em]">Amount Due</span>
-            <span className="text-3xl font-black italic">{fmt(invoice.total)}</span>
+            <span className="text-3xl font-black italic">{fmt(resolvedInvoiceTotal(invoice))}</span>
           </div>
         </div>
       </div>
@@ -504,7 +524,9 @@ function MinimalTemplate({ invoice, isInterState }: any) {
         <div className="w-full md:w-80 space-y-4">
           <div className="flex justify-between items-center px-4 py-2 bg-slate-50 rounded-xl">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Taxes</span>
-            <span className="text-sm font-bold text-slate-600">{fmt(Number(invoice.total) - Number(invoice.subTotal))}</span>
+            <span className="text-sm font-bold text-slate-600">
+              {fmt(Number(invoice.cgstTotal) + Number(invoice.sgstTotal) + Number(invoice.igstTotal))}
+            </span>
           </div>
           {Number(invoice.discountTotal) > 0 && (
             <div className="flex justify-between items-center px-4 py-2 bg-green-50 rounded-xl">
@@ -514,7 +536,7 @@ function MinimalTemplate({ invoice, isInterState }: any) {
           )}
           <div className="flex justify-between items-end px-4 py-6">
             <span className="text-xs font-black uppercase tracking-widest text-slate-300">Amount Due</span>
-            <span className="text-5xl font-black tracking-tighter text-slate-900 italic leading-none">{fmt(invoice.total)}</span>
+            <span className="text-5xl font-black tracking-tighter text-slate-900 italic leading-none">{fmt(resolvedInvoiceTotal(invoice))}</span>
           </div>
         </div>
       </div>
@@ -525,11 +547,12 @@ function MinimalTemplate({ invoice, isInterState }: any) {
 function TaxBreakdownSection({ items, isInterState }: { items: any[]; isInterState: boolean }) {
   const summary = items.reduce((acc: any, item: any) => {
     const rate = Number(item.taxRate) || 0;
-    const base = Number(item.quantity) * Number(item.unitPrice);
-    const tax = (base * rate) / 100;
-    if (!acc[rate]) acc[rate] = { rate, taxable: 0, tax: 0 };
-    acc[rate].taxable += base;
-    acc[rate].tax += tax;
+    const taxable = Number(item.quantity) * Number(item.unitPrice) - Number(item.discount || 0);
+    if (!acc[rate]) acc[rate] = { rate, taxable: 0, cgst: 0, sgst: 0, igst: 0 };
+    acc[rate].taxable += taxable;
+    acc[rate].cgst += Number(item.cgstAmount || 0);
+    acc[rate].sgst += Number(item.sgstAmount || 0);
+    acc[rate].igst += Number(item.igstAmount || 0);
     return acc;
   }, {});
 
@@ -559,11 +582,11 @@ function TaxBreakdownSection({ items, isInterState }: { items: any[]; isInterSta
               <td className="py-2.5">{r.rate}%</td>
               <td className="py-2.5 text-right font-semibold text-slate-800">{fmt(r.taxable)}</td>
               {isInterState ? (
-                <td className="py-2.5 text-right font-black text-slate-900">{fmt(r.tax)}</td>
+                <td className="py-2.5 text-right font-black text-slate-900">{fmt(r.igst)}</td>
               ) : (
                 <>
-                  <td className="py-2.5 text-right font-black text-slate-900">{fmt(r.tax / 2)}</td>
-                  <td className="py-2.5 text-right font-black text-slate-900">{fmt(r.tax / 2)}</td>
+                  <td className="py-2.5 text-right font-black text-slate-900">{fmt(r.cgst)}</td>
+                  <td className="py-2.5 text-right font-black text-slate-900">{fmt(r.sgst)}</td>
                 </>
               )}
             </tr>

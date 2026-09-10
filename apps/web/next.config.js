@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: "standalone",
+  // Standalone is for Docker/EC2; Vercel uses its own output handling.
+  ...(process.env.VERCEL ? {} : { output: "standalone" }),
   allowedDevOrigins: ["*.ngrok-free.app"],
 };
 

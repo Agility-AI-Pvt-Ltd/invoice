@@ -17,6 +17,9 @@ import {
   CheckCircle2,
   Box,
 } from "lucide-react";
+import { computeInvoiceTotals } from "@/lib/gst";
+import { deriveRateOnlyFromTargetTotal } from "@/lib/gst-compute";
+import { formatInr, toRupees } from "@/lib/money";
 
 type Customer = { id: string; name: string; stateCode: string | null; address?: string | null };
 type Product = {
@@ -392,6 +395,11 @@ export default function InvoiceForm({
     ],
   );
 
+  /** Line items whose rate was derived from a negotiated total (not manually edited). */
+  const [negotiatedRates, setNegotiatedRates] = useState<Set<string>>(new Set());
+  /** In-progress total field text while user is negotiating. */
+  const [totalDrafts, setTotalDrafts] = useState<Record<string, string>>({});
+
   const selectedCustomer = useMemo(
     () => customers.find((c) => c.name === customerInput),
     [customers, customerInput],
@@ -409,26 +417,28 @@ export default function InvoiceForm({
   }, [effectiveStateCode, orgStateCode, manualTaxMode]);
 
   const totals = useMemo(() => {
-    let subTotal = 0,
-      cgst = 0,
-      sgst = 0,
-      igst = 0,
-      discountTotal = 0;
-    items.forEach((item) => {
-      const lineTotal = item.quantity * item.unitPrice;
-      const taxableAmount = lineTotal - (item.discount || 0);
-      const tax = (taxableAmount * item.taxRate) / 100;
-      
-      subTotal += lineTotal;
-      discountTotal += (item.discount || 0);
-      
-      if (isInterState) igst += tax;
-      else {
-        cgst += tax / 2;
-        sgst += tax / 2;
-      }
-    });
-    return { subTotal, cgst, sgst, igst, discountTotal, total: subTotal - discountTotal + cgst + sgst + igst };
+    const computed = computeInvoiceTotals(
+      items.map((item) => ({
+        description: item.description,
+        hsnCode: item.hsnCode,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        taxRate: item.taxRate,
+        discount: item.discount || 0,
+        productId: item.productId,
+      })),
+      isInterState,
+    );
+
+    return {
+      subTotal: computed.subTotal,
+      cgst: computed.cgstTotal,
+      sgst: computed.sgstTotal,
+      igst: computed.igstTotal,
+      discountTotal: computed.discountTotal,
+      total: computed.grandTotal,
+      processedItems: computed.processedItems,
+    };
   }, [items, isInterState]);
 
   const addItem = () =>
@@ -446,8 +456,81 @@ export default function InvoiceForm({
       },
     ]);
 
-  const removeItem = (id: string) =>
-    items.length > 1 && setItems((p) => p.filter((i) => i.id !== id));
+  const removeItem = (id: string) => {
+    if (items.length <= 1) return;
+    setItems((p) => p.filter((i) => i.id !== id));
+    setTotalDrafts((p) => {
+      const next = { ...p };
+      delete next[id];
+      return next;
+    });
+    setNegotiatedRates((p) => {
+      const next = new Set(p);
+      next.delete(id);
+      return next;
+    });
+  };
+
+  const applyNegotiatedTotal = (
+    item: LineItem,
+    totalInclTax: number,
+    currentTotalRupees: number,
+  ): number | null => {
+    if (!Number.isFinite(totalInclTax) || totalInclTax <= 0) return null;
+    const qty = Number(item.quantity);
+    if (qty <= 0) return null;
+
+    const newRate = deriveRateOnlyFromTargetTotal(
+      totalInclTax,
+      qty,
+      item.taxRate,
+      item.discount || 0,
+      isInterState,
+      currentTotalRupees,
+    );
+
+    const achieved = toRupees(
+      computeInvoiceTotals(
+        [
+          {
+            description: item.description,
+            quantity: qty,
+            unitPrice: newRate,
+            taxRate: item.taxRate,
+            discount: item.discount || 0,
+          },
+        ],
+        isInterState,
+      ).processedItems[0]?.total ?? 0,
+    );
+
+    if (Math.abs(achieved - currentTotalRupees) < 0.005) return null;
+    if (newRate === item.unitPrice) return null;
+
+    return newRate;
+  };
+
+  const commitNegotiatedTotal = (
+    item: LineItem,
+    totalInclTax: number,
+    currentTotalRupees: number,
+  ) => {
+    const newRate = applyNegotiatedTotal(item, totalInclTax, currentTotalRupees);
+    if (newRate === null) return;
+    setNegotiatedRates((prev) => new Set(prev).add(item.id));
+    setTotalDrafts((prev) => {
+      const next = { ...prev };
+      delete next[item.id];
+      return next;
+    });
+    setItems((prev) =>
+      prev.map((row) =>
+        row.id === item.id ? { ...row, unitPrice: newRate } : row,
+      ),
+    );
+  };
+
+  const resolveItemsForSave = (): LineItem[] => items;
 
   const updateItem = (
     id: string,
@@ -467,6 +550,20 @@ export default function InvoiceForm({
     setIsSubmitting(true);
     setError("");
     try {
+      const itemsToSave = resolveItemsForSave();
+      const saveTotals = computeInvoiceTotals(
+        itemsToSave.map((item) => ({
+          description: item.description,
+          hsnCode: item.hsnCode,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          taxRate: item.taxRate,
+          discount: item.discount || 0,
+          productId: item.productId,
+        })),
+        isInterState,
+      );
+
       const url =
         editMode && existingData
           ? `/api/invoices/${existingData.id}`
@@ -491,8 +588,8 @@ export default function InvoiceForm({
           template: selectedTemplate,
           placeOfSupply: effectiveStateCode,
           isInterState,
-          discountTotal: totals.discountTotal,
-          items: items.map((i) => ({
+          discountTotal: saveTotals.discountTotal,
+          items: itemsToSave.map((i) => ({
             productId: i.productId ?? undefined,
             description: i.description,
             hsnCode: i.hsnCode,
@@ -885,7 +982,9 @@ export default function InvoiceForm({
 
               <div className="divide-y divide-border">
                 {/* Item Rows */}
-                {items.map((item, index) => (
+                {items.map((item, index) => {
+                  const processed = totals.processedItems[index];
+                  return (
                   <div
                     key={item.id}
                     className="p-6 space-y-4 hover:bg-secondary/20 transition-colors relative group"
@@ -975,13 +1074,26 @@ export default function InvoiceForm({
                                 Number(e.target.value) || 0,
                               )
                             }
+                            onBlur={() => {
+                              setTotalDrafts((prev) => {
+                                const next = { ...prev };
+                                delete next[item.id];
+                                return next;
+                              });
+                            }}
                             className={`${inputCls} tabular-nums`}
                           />
                         </div>
                         <div className="w-[130px]">
                           <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1 block flex items-center gap-1">
                             Rate (₹)
-                            <span className="text-[8px] bg-primary/10 text-primary px-1 rounded">Edit</span>
+                            {negotiatedRates.has(item.id) ? (
+                              <span className="text-[8px] bg-amber-500/15 text-amber-700 px-1 rounded" title="Adjusted from negotiated total">
+                                Adjusted
+                              </span>
+                            ) : (
+                              <span className="text-[8px] bg-primary/10 text-primary px-1 rounded">Edit</span>
+                            )}
                           </label>
                           <input
                             type="number"
@@ -989,14 +1101,21 @@ export default function InvoiceForm({
                             step="0.01"
                             placeholder="0.00"
                             value={item.unitPrice === 0 ? "" : Number(item.unitPrice.toFixed(2))}
-                            onChange={(e) =>
+                            onChange={(e) => {
+                              setNegotiatedRates((prev) => {
+                                const next = new Set(prev);
+                                next.delete(item.id);
+                                return next;
+                              });
                               updateItem(
                                 item.id,
                                 "unitPrice",
                                 Number(e.target.value) || 0,
-                              )
-                            }
-                            className={`${inputCls} border-primary/20 focus:border-primary shadow-sm`}
+                              );
+                            }}
+                            className={`${inputCls} border-primary/20 focus:border-primary shadow-sm ${
+                              negotiatedRates.has(item.id) ? "bg-amber-500/5 border-amber-500/30" : ""
+                            }`}
                           />
                         </div>
                         <div className="w-[100px]">
@@ -1025,13 +1144,23 @@ export default function InvoiceForm({
                           </label>
                           <select
                             value={item.taxRate}
-                            onChange={(e) =>
+                            onChange={(e) => {
+                              setTotalDrafts((prev) => {
+                                const next = { ...prev };
+                                delete next[item.id];
+                                return next;
+                              });
+                              setNegotiatedRates((prev) => {
+                                const next = new Set(prev);
+                                next.delete(item.id);
+                                return next;
+                              });
                               updateItem(
                                 item.id,
                                 "taxRate",
                                 Number(e.target.value),
-                              )
-                            }
+                              );
+                            }}
                             className="w-full h-[42px] text-xs font-bold bg-secondary/50 border border-border rounded-xl px-2 py-1 focus:ring-2 focus:ring-primary/20"
                           >
                             {[0, 5, 12, 18, 28].map((r) => (
@@ -1051,7 +1180,10 @@ export default function InvoiceForm({
                               IGST ({item.taxRate}%)
                             </label>
                             <div className="text-xs font-bold tabular-nums text-primary">
-                              ₹{((item.quantity * item.unitPrice * item.taxRate) / 100).toFixed(2)}
+                              {formatInr(processed?.igstAmount ?? 0, {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
                             </div>
                           </div>
                         ) : null}
@@ -1061,7 +1193,12 @@ export default function InvoiceForm({
                             CGST ({item.taxRate / 2}%)
                           </label>
                           <div className="text-xs font-bold tabular-nums">
-                            ₹{!isInterState ? ((item.quantity * item.unitPrice * (item.taxRate / 2)) / 100).toFixed(2) : "0.00"}
+                            {isInterState
+                              ? formatInr(0, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                              : formatInr(processed?.cgstAmount ?? 0, {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
                           </div>
                         </div>
                         <div className="w-[90px]">
@@ -1069,46 +1206,73 @@ export default function InvoiceForm({
                             SGST ({item.taxRate / 2}%)
                           </label>
                           <div className="text-xs font-bold tabular-nums">
-                            ₹{!isInterState ? ((item.quantity * item.unitPrice * (item.taxRate / 2)) / 100).toFixed(2) : "0.00"}
+                            {isInterState
+                              ? formatInr(0, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                              : formatInr(processed?.sgstAmount ?? 0, {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
                           </div>
                         </div>
                         
-                        <div className="w-[140px] ml-auto">
+                        <div className="w-[160px] ml-auto">
                           <label className="text-[10px] font-bold text-primary uppercase tracking-widest mb-1 block">
                             Total (Incl. Tax)
                           </label>
+                          <p className="text-[9px] text-primary/70 mb-1.5 leading-tight">
+                            Type amount, press Enter — rate updates
+                          </p>
                           <input
                             type="number"
                             min="0"
                             step="0.01"
                             placeholder="0.00"
-                            key={`total-${item.id}-${item.unitPrice}-${item.quantity}-${item.taxRate}-${item.discount}`}
-                            defaultValue={(
-                              ((item.quantity || 0) * (item.unitPrice || 0) - (item.discount || 0)) *
-                              (1 + (item.taxRate || 0) / 100)
-                            ).toFixed(2)}
-                            onBlur={(e) => {
-                              const totalInclTax = Number(e.target.value) || 0;
-                              const qty = item.quantity || 1;
-                              const taxRate = item.taxRate || 0;
-                              const unitPrice = item.unitPrice || 0;
-                              
-                              const newDiscount = (qty * unitPrice) - (totalInclTax / (1 + taxRate / 100));
-                              updateItem(item.id, "discount", Number(Math.max(0, newDiscount).toFixed(2)));
+                            value={
+                              totalDrafts[item.id] ??
+                              toRupees(processed?.total ?? 0).toFixed(2)
+                            }
+                            onChange={(e) => {
+                              setTotalDrafts((prev) => ({
+                                ...prev,
+                                [item.id]: e.target.value,
+                              }));
+                            }}
+                            onBlur={() => {
+                              setTotalDrafts((prev) => {
+                                const next = { ...prev };
+                                delete next[item.id];
+                                return next;
+                              });
                             }}
                             onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                (e.target as HTMLInputElement).blur();
+                              if (e.key !== "Enter") return;
+                              e.preventDefault();
+                              const raw =
+                                totalDrafts[item.id] ??
+                                (e.target as HTMLInputElement).value;
+                              const totalInclTax = Number(raw);
+                              if (
+                                Number.isFinite(totalInclTax) &&
+                                totalInclTax > 0
+                              ) {
+                                commitNegotiatedTotal(
+                                  item,
+                                  totalInclTax,
+                                  toRupees(processed?.total ?? 0),
+                                );
                               }
                             }}
                             className={`${inputCls} border-primary/40 bg-white font-bold text-primary focus:ring-primary/30`}
                           />
+                          {item.quantity <= 0 && (
+                            <p className="text-[9px] text-amber-600 mt-1">Enter qty first</p>
+                          )}
                         </div>
                       </div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div className="px-6 py-4 bg-secondary/10 flex justify-center border-t border-border">
@@ -1136,7 +1300,10 @@ export default function InvoiceForm({
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Subtotal</span>
                   <span className="font-semibold">
-                    ₹{totals.subTotal.toLocaleString("en-IN")}
+                    {formatInr(totals.subTotal, {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
                   </span>
                 </div>
 
@@ -1147,7 +1314,11 @@ export default function InvoiceForm({
                       Total Discount
                     </span>
                     <span>
-                      -₹{totals.discountTotal.toLocaleString("en-IN")}
+                      -
+                      {formatInr(totals.discountTotal, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
                     </span>
                   </div>
                 )}
@@ -1156,7 +1327,10 @@ export default function InvoiceForm({
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">IGST Total</span>
                     <span className="font-semibold">
-                      ₹{totals.igst.toLocaleString("en-IN")}
+                      {formatInr(totals.igst, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
                     </span>
                   </div>
                 ) : (
@@ -1164,13 +1338,19 @@ export default function InvoiceForm({
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">CGST Total</span>
                       <span className="font-semibold">
-                        ₹{totals.cgst.toLocaleString("en-IN")}
+                        {formatInr(totals.cgst, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
                       </span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">SGST Total</span>
                       <span className="font-semibold">
-                        ₹{totals.sgst.toLocaleString("en-IN")}
+                        {formatInr(totals.sgst, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
                       </span>
                     </div>
                   </>
@@ -1179,7 +1359,10 @@ export default function InvoiceForm({
                 <div className="pt-4 border-t border-border flex justify-between">
                   <span className="text-base font-bold">Total Amount</span>
                   <span className="text-xl font-bold text-primary">
-                    ₹{totals.total.toLocaleString("en-IN")}
+                    {formatInr(totals.total, {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
                   </span>
                 </div>
               </div>

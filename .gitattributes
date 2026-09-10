@@ -1,0 +1,4 @@
+# Shell scripts must keep LF: they run on Linux (Cloud Run build, GCE load generator)
+# and CRLF breaks both the shebang and `source`d env files. core.autocrlf=true would
+# otherwise check them out with CRLF on Windows.
+*.sh text eol=lf

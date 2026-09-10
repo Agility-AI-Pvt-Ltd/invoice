@@ -2,6 +2,7 @@ import { prisma } from "@repo/db";
 import InvoiceForm from "./InvoiceForm";
 import { requireAuth } from "../../../../../lib/auth";
 import { generateNextInvoiceNumber } from "../../../../../lib/invoice-utils";
+import { toRupees } from "@/lib/money";
 
 export default async function NewInvoicePage() {
   const user = await requireAuth();
@@ -31,7 +32,11 @@ export default async function NewInvoicePage() {
         productKind: true,
       },
       orderBy: { name: "asc" },
-    }),
+    }).then(products => products.map(p => ({
+      ...p,
+      price: toRupees(p.price),
+      taxRate: Number(p.taxRate)
+    }))),
     prisma.organization.findUnique({ where: { id: organizationId } }),
     prisma.invoice.findFirst({
       where: { organizationId },
