@@ -2,6 +2,7 @@
   "name": "invoice",
   "private": true,
   "scripts": {
+    "postinstall": "npm run db:generate -w @repo/db",
     "build": "turbo run build",
     "dev": "turbo run dev",
     "db:seed": "npm run db:seed -w @repo/db",
