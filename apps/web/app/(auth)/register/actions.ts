@@ -50,7 +50,9 @@ export async function registerUser(
     };
   }
 
-  const { name, email, password } = validatedFields.data;
+  const name = validatedFields.data.name.trim();
+  const email = validatedFields.data.email.trim().toLowerCase();
+  const { password } = validatedFields.data;
 
   const headerStore = await headers();
   const ip =

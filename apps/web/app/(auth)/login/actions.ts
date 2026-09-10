@@ -56,7 +56,10 @@ export async function loginUser(
   let redirectPath = "/dashboard";
 
   try {
-    const user = await prisma.user.findUnique({ where: { email } });
+    // Case-insensitive: older rows may store mixed-case emails from registration.
+    const user = await prisma.user.findFirst({
+      where: { email: { equals: email, mode: "insensitive" } },
+    });
 
     if (!user || !user.password) {
       return { message: "Invalid email or password." };
