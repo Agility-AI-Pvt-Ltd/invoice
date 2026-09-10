@@ -9,16 +9,21 @@
     "db:migrate": "prisma migrate dev",
     "db:migrate-from-old": "tsx scripts/migrate-old-db.ts",
     "db:studio": "prisma studio",
-    "db:seed-fake-users": "tsx scripts/seed-fake-users.ts"
+    "db:seed": "tsx prisma/seed.ts"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "@prisma/adapter-pg": "^6.0.0",
     "@prisma/client": "^6.0.0",
+    "bcryptjs": "^3.0.3",
     "dotenv": "^16.0.0",
     "pg": "^8.0.0"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
     "@types/pg": "^8.0.0",
     "prisma": "^6.0.0",
     "tsx": "^4.19.0"
