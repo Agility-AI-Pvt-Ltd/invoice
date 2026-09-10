@@ -1,0 +1,10 @@
+# Production on EC2 — pull pre-built image from ECR (no local build).
+# On EC2: aws ecr get-login-password ... | docker login ... && docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d
+
+services:
+  web:
+    image: ${ECR_IMAGE:?Set ECR_IMAGE in .env — e.g. 429965275836.dkr.ecr.ap-south-1.amazonaws.com/invoicely-prod:latest}
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:8080:8080"

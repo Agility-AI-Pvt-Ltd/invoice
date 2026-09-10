@@ -6,6 +6,7 @@ import { hash } from "bcryptjs";
 import { redirect } from "next/navigation";
 import { cookies, headers } from "next/headers";
 import { checkAuthRateLimit } from "../../../lib/ratelimit";
+import { logger } from "@/lib/logger";
 
 const registerSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters" }),
@@ -82,7 +83,8 @@ export async function registerUser(
       maxAge: 60 * 60 * 24 * 7,
       path: "/",
     });
-  } catch {
+  } catch (error) {
+    logger.error("auth:register", "Registration failed", error, { email });
     return {
       message: "An error occurred during registration. Please try again.",
     };

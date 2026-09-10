@@ -15,6 +15,7 @@
     "loadtest:smoke": "node loadtests/scripts/run-k6.mjs smoke",
     "loadtest:run": "node loadtests/scripts/run-k6.mjs load",
     "loadtest:stepup": "node loadtests/scripts/run-k6.mjs stepup",
+    "loadtest:chaos": "node loadtests/scripts/run-k6.mjs chaos",
     "loadtest:expensive": "node loadtests/scripts/run-k6.mjs expensive",
     "loadtest:gce": "powershell -NoProfile -ExecutionPolicy Bypass -File loadtests/scripts/gce-loadgen.ps1",
     "loadtest:gce:up": "npm run loadtest:gce -- -Action up",
@@ -22,6 +23,11 @@
     "loadtest:gce:results": "npm run loadtest:gce -- -Action results",
     "loadtest:gce:status": "npm run loadtest:gce -- -Action status",
     "loadtest:gce:down": "npm run loadtest:gce -- -Action down",
+    "loadtest:gce:schedule": "powershell -NoProfile -ExecutionPolicy Bypass -File loadtests/scripts/setup-gcp-chaos-schedule.ps1",
+    "loadtest:gce:schedule:cloud": "powershell -NoProfile -ExecutionPolicy Bypass -File loadtests/scripts/setup-gcp-chaos-schedule.ps1 -UseCloudScheduler",
+    "loadtest:cloud:deploy": "powershell -NoProfile -ExecutionPolicy Bypass -File loadtests/scripts/setup-cloud-run-loadtest.ps1",
+    "loadtest:cloud:deploy:skip-build": "powershell -NoProfile -ExecutionPolicy Bypass -File loadtests/scripts/setup-cloud-run-loadtest.ps1 -SkipBuild",
+    "loadtest:cloud:upload-users": "powershell -NoProfile -ExecutionPolicy Bypass -File loadtests/scripts/upload-users-gcs.ps1",
     "db:seed-fake-users": "npm run db:seed-fake-users -w @repo/db --"
   },
   "devDependencies": {
