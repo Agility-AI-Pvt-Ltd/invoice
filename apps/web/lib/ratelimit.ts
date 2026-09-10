@@ -17,9 +17,15 @@ const ratelimit = isConfigured
 export async function checkAuthRateLimit(identifier: string): Promise<{ allowed: boolean; retryAfter?: number }> {
   if (!ratelimit) return { allowed: true };
 
-  const { success, reset } = await ratelimit.limit(identifier);
-  if (!success) {
-    return { allowed: false, retryAfter: Math.ceil((reset - Date.now()) / 1000) };
+  try {
+    const { success, reset } = await ratelimit.limit(identifier);
+    if (!success) {
+      return { allowed: false, retryAfter: Math.ceil((reset - Date.now()) / 1000) };
+    }
+    return { allowed: true };
+  } catch (error) {
+    // Fail-open if Redis is misconfigured or unreachable — don't block login.
+    console.warn("[ratelimit] fail-open:", error);
+    return { allowed: true };
   }
-  return { allowed: true };
 }

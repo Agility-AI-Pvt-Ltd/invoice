@@ -40,7 +40,8 @@ export async function loginUser(
     };
   }
 
-  const { email, password } = validatedFields.data;
+  const email = validatedFields.data.email.trim().toLowerCase();
+  const { password } = validatedFields.data;
 
   const headerStore = await headers();
   const ip =
@@ -81,7 +82,13 @@ export async function loginUser(
     }
   } catch (error) {
     logger.error("auth:login", "Unexpected login failure", error, { email });
-    return { message: "An error occurred during login. Please try again." };
+
+    const message =
+      error instanceof Error && /DATABASE_URL|connect|ECONNREFUSED|timeout/i.test(error.message)
+        ? "Cannot reach the database. Check DATABASE_URL in your deployment settings."
+        : "An error occurred during login. Please try again.";
+
+    return { message };
   }
 
   redirect(redirectPath);
