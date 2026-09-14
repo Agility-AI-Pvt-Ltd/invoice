@@ -12,6 +12,7 @@ import {
   isBcryptHash,
   verifyPassword,
 } from "@/lib/password";
+import { databaseFailureMessage } from "@/lib/db-error";
 
 const loginSchema = z.object({
   email: z.string().email({ message: "Invalid email address" }),
@@ -96,9 +97,8 @@ export async function loginUser(
     logger.error("auth:login", "Unexpected login failure", error, { email });
 
     const message =
-      error instanceof Error && /DATABASE_URL|connect|ECONNREFUSED|timeout/i.test(error.message)
-        ? "Cannot reach the database. Check DATABASE_URL in your deployment settings."
-        : "An error occurred during login. Please try again.";
+      databaseFailureMessage(error) ??
+      "An error occurred during login. Please try again.";
 
     return { message };
   }
