@@ -7,13 +7,26 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
+function normalizeDatabaseUrl(url: string): string {
+  // Silence pg v8 SSL deprecation warning for Neon-style `sslmode=require` URLs.
+  if (
+    url.includes("sslmode=require") &&
+    !url.includes("uselibpqcompat=")
+  ) {
+    return `${url}${url.includes("?") ? "&" : "?"}uselibpqcompat=true`;
+  }
+  return url;
+}
+
 function createPrismaClient() {
-  const connectionString = process.env.DATABASE_URL?.trim();
-  if (!connectionString) {
+  const raw = process.env.DATABASE_URL?.trim();
+  if (!raw) {
     throw new Error(
       "DATABASE_URL is not set. Add it to .env locally or Vercel project settings.",
     );
   }
+
+  const connectionString = normalizeDatabaseUrl(raw);
 
   const pool = new Pool({
     connectionString,

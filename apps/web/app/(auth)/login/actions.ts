@@ -2,11 +2,16 @@
 
 import { z } from "zod";
 import { prisma } from "@repo/db";
-import { compare } from "bcryptjs";
 import { redirect } from "next/navigation";
 import { cookies, headers } from "next/headers";
 import { checkAuthRateLimit } from "../../../lib/ratelimit";
 import { logger } from "@/lib/logger";
+import { findUserByEmailForLogin } from "@/lib/find-user-by-email";
+import {
+  hashPassword,
+  isBcryptHash,
+  verifyPassword,
+} from "@/lib/password";
 
 const loginSchema = z.object({
   email: z.string().email({ message: "Invalid email address" }),
@@ -56,19 +61,23 @@ export async function loginUser(
   let redirectPath = "/dashboard";
 
   try {
-    // Case-insensitive: older rows may store mixed-case emails from registration.
-    const user = await prisma.user.findFirst({
-      where: { email: { equals: email, mode: "insensitive" } },
-    });
+    const user = await findUserByEmailForLogin(email);
 
-    if (!user || !user.password) {
+    if (!user?.password) {
       return { message: "Invalid email or password." };
     }
 
-    const passwordMatch = await compare(password, user.password);
+    const passwordMatch = await verifyPassword(password, user.password);
 
     if (!passwordMatch) {
       return { message: "Invalid email or password." };
+    }
+
+    if (!isBcryptHash(user.password)) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { password: await hashPassword(password) },
+      });
     }
 
     const cookieStore = await cookies();
