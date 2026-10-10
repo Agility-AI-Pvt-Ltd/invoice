@@ -5,6 +5,10 @@ node_modules
 .pnp
 .pnp.js
 
+# Seeded fake user credentials (plaintext passwords)
+packages/db/data/fake-users-credentials.json
+packages/db/data/fake-users-credentials.csv
+
 # Local env files
 .env
 .env.local
@@ -14,6 +18,9 @@ node_modules
 
 # Testing
 coverage
+
+# Local load-test harness (k6 scripts, seeded users, results)
+loadtests/
 
 # Turbo
 .turbo

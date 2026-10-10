@@ -6,10 +6,14 @@ import {
   StyleSheet,
   Font,
 } from "@react-pdf/renderer";
+import { toRupees } from "./money";
+import { amountInWordsIndian } from "./amount-in-words";
 
 type InvoiceItem = {
   description: string;
   hsnCode?: string | null;
+  referenceId?: string | null;
+  lineDate?: Date | string | null;
   // At runtime these often come from Prisma Decimal – keep type wide and
   // coerce to numbers/strings right before rendering into <Text>.
   quantity: number | string | { toNumber?: () => number };
@@ -38,6 +42,11 @@ type InvoiceData = {
   shippingAddress?: string | null;
   shippingName?: string | null;
   discountTotal?: number | string | { toNumber?: () => number };
+  invoiceRemarks?: string | null;
+  invoiceTerms?: string | null;
+  paymentMode?: string | null;
+  roundOff?: number | string | { toNumber?: () => number };
+  reverseCharge?: boolean;
   items: InvoiceItem[];
 
   customer: {
@@ -53,6 +62,12 @@ type InvoiceData = {
     address?: string | null;
     gstin?: string | null;
     stateCode?: string | null;
+    phone?: string | null;
+    website?: string | null;
+    bankName?: string | null;
+    bankAccount?: string | null;
+    bankIfsc?: string | null;
+    bankAccountType?: string | null;
   };
 };
 
@@ -68,11 +83,40 @@ const toNumber = (value: any): number => {
 };
 
 const fmt = (n: any) => {
-  const num = toNumber(n);
-  return `₹${num.toFixed(2)}`;
+  const num = toRupees(toNumber(n));
+  return `₹${num.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 const fmtDate = (d: Date) =>
   new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+
+const fmtDateTax = (d: Date) => {
+  const dt = new Date(d);
+  const day = String(dt.getDate()).padStart(2, "0");
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${day}-${months[dt.getMonth()]}-${dt.getFullYear()}`;
+};
+
+const fmtRs = (n: any) => {
+  const num = toRupees(toNumber(n));
+  return num.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
+const panFromGstin = (gstin?: string | null) => {
+  if (!gstin || gstin.length < 12) return null;
+  return gstin.substring(2, 12).toUpperCase();
+};
+
+function resolveInterState(inv: InvoiceData): boolean {
+  const hasIgst = Number(inv.igstTotal) > 0;
+  const hasCgst = Number(inv.cgstTotal) > 0;
+  const orgState = (inv.organization.stateCode || "").match(/\d+/)?.[0] || "";
+  const supplyState = (inv.placeOfSupply || inv.organization.stateCode || "").match(/\d+/)?.[0] || "";
+  return hasIgst ? true : hasCgst ? false : !!orgState && !!supplyState && orgState !== supplyState;
+}
+
+function lineBase(item: InvoiceItem) {
+  return toNumber(item.quantity) * toNumber(item.unitPrice) - toNumber((item as any).discount || 0);
+}
 
 // ─── MODERN TEMPLATE ────────────────────────────────────────────────
 Font.register({
@@ -577,11 +621,298 @@ function MinimalPDF({ inv }: { inv: InvoiceData }) {
   );
 }
 
+// ─── TAX INVOICE (formal GST) ────────────────────────────────────────
+const taxStyles = StyleSheet.create({
+  page: {
+    fontFamily: "Helvetica",
+    fontSize: 8,
+    color: "#000000",
+    padding: 24,
+  },
+  outer: {
+    borderWidth: 1,
+    borderColor: "#000000",
+    flex: 1,
+  },
+  title: {
+    textAlign: "center",
+    fontSize: 11,
+    fontFamily: "Helvetica-Bold",
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: "#000000",
+  },
+  row: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: "#000000" },
+  half: { width: "50%", padding: 8, borderRightWidth: 1, borderRightColor: "#000000" },
+  halfLast: { width: "50%", padding: 8 },
+  bold: { fontFamily: "Helvetica-Bold", fontSize: 9, marginBottom: 3 },
+  line: { lineHeight: 1.45, marginBottom: 1 },
+  metaLine: { flexDirection: "row", marginBottom: 2 },
+  metaLabel: { width: 110, fontFamily: "Helvetica-Bold" },
+  metaVal: { flex: 1 },
+  sectionHead: {
+    fontFamily: "Helvetica-Bold",
+    padding: 5,
+    borderBottomWidth: 1,
+    borderBottomColor: "#000000",
+    backgroundColor: "#f0f0f0",
+  },
+  tableHead: {
+    flexDirection: "row",
+    backgroundColor: "#e8e8e8",
+    borderBottomWidth: 1,
+    borderBottomColor: "#000000",
+    paddingVertical: 4,
+    paddingHorizontal: 4,
+  },
+  th: { fontFamily: "Helvetica-Bold", fontSize: 7 },
+  tableRow: {
+    flexDirection: "row",
+    borderBottomWidth: 0.5,
+    borderBottomColor: "#cccccc",
+    paddingVertical: 5,
+    paddingHorizontal: 4,
+    minHeight: 28,
+  },
+  td: { fontSize: 7.5, lineHeight: 1.35 },
+  totalRow: {
+    flexDirection: "row",
+    borderTopWidth: 1,
+    borderTopColor: "#000000",
+    paddingVertical: 5,
+    paddingHorizontal: 4,
+    fontFamily: "Helvetica-Bold",
+  },
+  footerRow: { flexDirection: "row", borderTopWidth: 1, borderTopColor: "#000000" },
+  footerLeft: { width: "58%", padding: 8, borderRightWidth: 1, borderRightColor: "#000000" },
+  footerRight: { width: "42%", padding: 8 },
+  taxLine: { flexDirection: "row", justifyContent: "space-between", marginBottom: 3 },
+  signBlock: { marginTop: 24, alignItems: "flex-end" },
+  declaration: {
+    fontSize: 6.5,
+    fontStyle: "italic",
+    padding: 6,
+    borderTopWidth: 1,
+    borderTopColor: "#000000",
+    lineHeight: 1.4,
+  },
+});
+
+function TaxPDF({ inv }: { inv: InvoiceData }) {
+  const s = taxStyles;
+  const isInterState = resolveInterState(inv);
+  const taxableItems = inv.items.filter((item) => toNumber(item.taxRate) > 0);
+  const reimbItems = inv.items.filter((item) => toNumber(item.taxRate) === 0);
+  const taxableSubtotal = taxableItems.reduce((sum, item) => sum + lineBase(item), 0);
+  const reimbTotal = reimbItems.reduce((sum, item) => sum + lineBase(item), 0);
+  const orgPan = panFromGstin(inv.organization.gstin);
+  const totalRupees = toRupees(toNumber(inv.total));
+
+  return (
+    <Document>
+      <Page size="A4" style={s.page}>
+        <View style={s.outer}>
+          <Text style={s.title}>TAX INVOICE</Text>
+
+          <View style={s.row}>
+            <View style={s.half}>
+              <Text style={s.bold}>{inv.organization.name}</Text>
+              {inv.organization.address ? <Text style={s.line}>{inv.organization.address}</Text> : null}
+              {inv.organization.gstin ? <Text style={s.line}>GSTIN: {inv.organization.gstin}</Text> : null}
+              {orgPan ? <Text style={s.line}>PAN: {orgPan}</Text> : null}
+              {inv.organization.stateCode ? (
+                <Text style={s.line}>State: {inv.organization.stateCode}</Text>
+              ) : null}
+              {inv.organization.website ? <Text style={s.line}>Email: {inv.organization.website}</Text> : null}
+            </View>
+            <View style={s.halfLast}>
+              <View style={s.metaLine}>
+                <Text style={s.metaLabel}>Invoice No:</Text>
+                <Text style={s.metaVal}>{inv.invoiceNumber}</Text>
+              </View>
+              <View style={s.metaLine}>
+                <Text style={s.metaLabel}>Invoice Date:</Text>
+                <Text style={s.metaVal}>{fmtDateTax(inv.issueDate)}</Text>
+              </View>
+              {inv.invoiceRemarks || inv.notes ? (
+                <View style={s.metaLine}>
+                  <Text style={s.metaLabel}>Remarks:</Text>
+                  <Text style={s.metaVal}>{inv.invoiceRemarks || inv.notes}</Text>
+                </View>
+              ) : null}
+              <View style={s.metaLine}>
+                <Text style={s.metaLabel}>Place of Supply:</Text>
+                <Text style={s.metaVal}>{inv.placeOfSupply || inv.customer.stateCode || "—"}</Text>
+              </View>
+              <View style={s.metaLine}>
+                <Text style={s.metaLabel}>Reverse Charge:</Text>
+                <Text style={s.metaVal}>{inv.reverseCharge ? "Yes" : "No"}</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={[s.row, { borderBottomWidth: 0 }]}>
+            <View style={[s.half, { borderRightWidth: 1 }]}>
+              <Text style={s.bold}>Billed To:</Text>
+              <Text style={s.line}>{inv.customer.name}</Text>
+              <Text style={s.line}>{inv.billingAddress || inv.customer.address || "—"}</Text>
+              {inv.customer.gstin ? <Text style={s.line}>GSTIN: {inv.customer.gstin}</Text> : null}
+              {inv.customer.stateCode ? <Text style={s.line}>State: {inv.customer.stateCode}</Text> : null}
+              {inv.customerDetails ? <Text style={s.line}>Attention: {inv.customerDetails}</Text> : null}
+            </View>
+            <View style={s.halfLast} />
+          </View>
+
+          <Text style={s.sectionHead}>Professional Fees (Taxable)</Text>
+          <View style={s.tableHead}>
+            <Text style={[s.th, { width: "6%", textAlign: "center" }]}>Sr.</Text>
+            <Text style={[s.th, { width: "38%" }]}>Particulars</Text>
+            <Text style={[s.th, { width: "12%", textAlign: "center" }]}>SAC Code</Text>
+            <Text style={[s.th, { width: "12%", textAlign: "center" }]}>No. of Days</Text>
+            <Text style={[s.th, { width: "16%", textAlign: "right" }]}>Per Day Fees</Text>
+            <Text style={[s.th, { width: "16%", textAlign: "right" }]}>Total (Rs.)</Text>
+          </View>
+          {(taxableItems.length ? taxableItems : inv.items).map((item, i) => (
+            <View key={i} style={s.tableRow}>
+              <Text style={[s.td, { width: "6%", textAlign: "center" }]}>{i + 1}</Text>
+              <Text style={[s.td, { width: "38%" }]}>{item.description}</Text>
+              <Text style={[s.td, { width: "12%", textAlign: "center" }]}>{item.hsnCode || "—"}</Text>
+              <Text style={[s.td, { width: "12%", textAlign: "center" }]}>{String(toNumber(item.quantity))}</Text>
+              <Text style={[s.td, { width: "16%", textAlign: "right" }]}>{fmtRs(item.unitPrice)}</Text>
+              <Text style={[s.td, { width: "16%", textAlign: "right" }]}>{fmtRs(lineBase(item))}</Text>
+            </View>
+          ))}
+          <View style={s.totalRow}>
+            <Text style={{ width: "84%", textAlign: "right", paddingRight: 8, fontSize: 8 }}>
+              Total Professional Fees (Taxable Value)
+            </Text>
+            <Text style={{ width: "16%", textAlign: "right", fontSize: 8 }}>{fmtRs(taxableSubtotal || inv.subTotal)}</Text>
+          </View>
+
+          {reimbItems.length > 0 && (
+            <>
+              <Text style={[s.sectionHead, { marginTop: 0 }]}>
+                Reimbursement of Out-of-Pocket Expenses (At Actuals — No GST)
+              </Text>
+              <View style={s.tableHead}>
+                <Text style={[s.th, { width: "6%", textAlign: "center" }]}>Sr.</Text>
+                <Text style={[s.th, { width: "44%" }]}>Particulars</Text>
+                <Text style={[s.th, { width: "18%", textAlign: "center" }]}>Ride ID</Text>
+                <Text style={[s.th, { width: "16%", textAlign: "center" }]}>Date</Text>
+                <Text style={[s.th, { width: "16%", textAlign: "right" }]}>Amount (Rs.)</Text>
+              </View>
+              {reimbItems.map((item, i) => (
+                <View key={i} style={s.tableRow}>
+                  <Text style={[s.td, { width: "6%", textAlign: "center" }]}>{i + 1}</Text>
+                  <Text style={[s.td, { width: "44%" }]}>{item.description}</Text>
+                  <Text style={[s.td, { width: "18%", textAlign: "center" }]}>
+                    {item.referenceId || item.hsnCode || "—"}
+                  </Text>
+                  <Text style={[s.td, { width: "16%", textAlign: "center" }]}>
+                    {item.lineDate ? fmtDateTax(new Date(item.lineDate)) : "—"}
+                  </Text>
+                  <Text style={[s.td, { width: "16%", textAlign: "right" }]}>{fmtRs(lineBase(item))}</Text>
+                </View>
+              ))}
+              <View style={s.totalRow}>
+                <Text style={{ width: "84%", textAlign: "right", paddingRight: 8, fontSize: 8 }}>Total Reimbursement</Text>
+                <Text style={{ width: "16%", textAlign: "right", fontSize: 8 }}>{fmtRs(reimbTotal)}</Text>
+              </View>
+            </>
+          )}
+
+          <View style={s.footerRow}>
+            <View style={s.footerLeft}>
+              <Text style={[s.bold, { fontSize: 8 }]}>Bank Account Details</Text>
+              <Text style={s.line}>Account Name: {inv.organization.name}</Text>
+              {inv.organization.bankName ? <Text style={s.line}>Bank Name: {inv.organization.bankName}</Text> : null}
+              {inv.organization.bankAccount ? <Text style={s.line}>A/c No: {inv.organization.bankAccount}</Text> : null}
+              {inv.organization.bankIfsc ? <Text style={s.line}>IFSC: {inv.organization.bankIfsc}</Text> : null}
+              {inv.organization.bankAccountType ? (
+                <Text style={s.line}>Account Type: {inv.organization.bankAccountType}</Text>
+              ) : null}
+              <Text style={[s.line, { marginTop: 6 }]}>
+                Payment Mode: {inv.paymentMode || "Bank Transfer (NEFT / RTGS) to the account above."}
+              </Text>
+              <Text style={[s.line, { marginTop: 6, fontFamily: "Helvetica-Bold" }]}>
+                Amount (In Words): {amountInWordsIndian(totalRupees)}
+              </Text>
+              {inv.invoiceTerms ? (
+                <Text style={[s.line, { marginTop: 8, fontSize: 7 }]}>TERMS: {inv.invoiceTerms}</Text>
+              ) : null}
+            </View>
+            <View style={s.footerRight}>
+              <View style={s.taxLine}>
+                <Text>Taxable Value</Text>
+                <Text>{fmtRs(taxableSubtotal || inv.subTotal)}</Text>
+              </View>
+              {isInterState ? (
+                <View style={s.taxLine}>
+                  <Text>
+                    IGST ({taxableItems[0] ? toNumber(taxableItems[0].taxRate) : 18}%)
+                  </Text>
+                  <Text>{fmtRs(inv.igstTotal)}</Text>
+                </View>
+              ) : (
+                <>
+                  <View style={s.taxLine}>
+                    <Text>CGST</Text>
+                    <Text>{fmtRs(inv.cgstTotal)}</Text>
+                  </View>
+                  <View style={s.taxLine}>
+                    <Text>SGST</Text>
+                    <Text>{fmtRs(inv.sgstTotal)}</Text>
+                  </View>
+                </>
+              )}
+              <View style={[s.taxLine, { borderTopWidth: 0.5, borderTopColor: "#999", paddingTop: 4, marginTop: 4 }]}>
+                <Text style={{ fontFamily: "Helvetica-Bold" }}>Subtotal (Services)</Text>
+                <Text style={{ fontFamily: "Helvetica-Bold" }}>
+                  {fmtRs(
+                    toNumber(taxableSubtotal || inv.subTotal) +
+                      toNumber(inv.cgstTotal) +
+                      toNumber(inv.sgstTotal) +
+                      toNumber(inv.igstTotal),
+                  )}
+                </Text>
+              </View>
+              {reimbTotal > 0 && (
+                <View style={s.taxLine}>
+                  <Text>Add: Reimbursement</Text>
+                  <Text>{fmtRs(reimbTotal)}</Text>
+                </View>
+              )}
+              <View style={s.taxLine}>
+                <Text>Round Off</Text>
+                <Text>{fmtRs(inv.roundOff ?? 0)}</Text>
+              </View>
+              <View style={[s.taxLine, { marginTop: 6 }]}>
+                <Text style={{ fontFamily: "Helvetica-Bold", fontSize: 9 }}>Grand Total</Text>
+                <Text style={{ fontFamily: "Helvetica-Bold", fontSize: 9 }}>{fmtRs(inv.total)}</Text>
+              </View>
+              <View style={s.signBlock}>
+                <Text style={{ fontFamily: "Helvetica-Bold", fontSize: 8 }}>For {inv.organization.name}</Text>
+                <Text style={{ marginTop: 28, fontSize: 7 }}>Authorised Signatory</Text>
+              </View>
+            </View>
+          </View>
+
+          <Text style={s.declaration}>
+            Declaration: We declare that this invoice shows the actual price of the services described and that all
+            particulars are true and correct. This is a computer-generated invoice.
+          </Text>
+        </View>
+      </Page>
+    </Document>
+  );
+}
+
 // ─── Selector ────────────────────────────────────────────────────────
 export function buildPDF(inv: InvoiceData, template: string) {
   switch (template) {
     case "classic": return <ClassicPDF inv={inv} />;
     case "minimal": return <MinimalPDF inv={inv} />;
+    case "tax": return <TaxPDF inv={inv} />;
     default:        return <ModernPDF inv={inv} />;
   }
 }

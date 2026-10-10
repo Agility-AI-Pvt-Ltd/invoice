@@ -26,7 +26,7 @@ export function DashboardCharts({
             Revenue Trend
           </h2>
           <span className="inline-flex items-center rounded-full border border-border bg-muted/50 px-3 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-            Last 6 Months
+            All Invoices · Last 6 Months
           </span>
         </div>
         <div className="p-6">

@@ -1,7 +1,7 @@
-export function formatInr(amount: number): string {
-  return `₹${amount.toLocaleString("en-IN", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
+export function formatInr(amountInCents: number): string {
+  return `₹${(amountInCents / 100).toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   })}`;
 }
 

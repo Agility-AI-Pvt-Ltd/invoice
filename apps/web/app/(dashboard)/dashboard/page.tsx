@@ -9,9 +9,15 @@ import {
   ArrowUpRight,
   Clock,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  ArrowDownRight,
+  DollarSign,
 } from 'lucide-react';
 import { DashboardCharts } from './_components/DashboardCharts';
+import { computeExpenseSummary } from '@/lib/expenses/summary';
+import { amountsToBreakdownRows } from '@/lib/expenses/breakdown';
+import { buildGstMonthOptions, currentUtcMonthKey } from '@/lib/expenses/gst-months';
+import { formatInr as formatInvoiceInr, toRupees } from '@/lib/money';
 
 const STATUS_COLORS: Record<string, string> = {
   DRAFT: '#94a3b8',
@@ -22,12 +28,25 @@ const STATUS_COLORS: Record<string, string> = {
   CANCELLED: '#6b7280',
 };
 
+/** Expenses are always stored in paise. */
+function formatExpenseInr(cents: number) {
+  return `₹${(cents / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function trendLine(pct: number | null, invertGood?: boolean): { text?: string; trendUp?: boolean } {
+  if (pct === null) return {};
+  const arrow = pct >= 0 ? '↑' : '↓';
+  const text = `${arrow} ${Math.abs(pct)}% vs last month`;
+  const up = invertGood ? pct <= 0 : pct >= 0;
+  return { text, trendUp: up };
+}
+
 export default async function DashboardPage() {
   const user = await requireAuth();
   const organizationId = user.ownedOrgs[0]?.id;
 
-  // ── Core queries (existing) ──
-  const [invoiceCount, customerCount, recentInvoices, revenueResult, pendingInvoices, paymentsResult] = await Promise.all([
+  // ── Core queries ──
+  const [invoiceCount, customerCount, recentInvoices, revenueResult, pendingInvoices, paymentsResult, expenseSummary] = await Promise.all([
     prisma.invoice.count({ where: { organizationId } }),
     prisma.customer.count({ where: { organizationId } }),
     prisma.invoice.findMany({
@@ -55,7 +74,8 @@ export default async function DashboardPage() {
         } 
       },
       _sum: { amount: true }
-    })
+    }),
+    organizationId ? computeExpenseSummary(organizationId) : null,
   ]);
 
   // ── Chart data queries ──
@@ -64,12 +84,12 @@ export default async function DashboardPage() {
   sixMonthsAgo.setDate(1);
   sixMonthsAgo.setHours(0, 0, 0, 0);
 
-  const [paidInvoices, statusGroups, topCustomerRows] = await Promise.all([
-    // Monthly revenue: sum of paid invoice totals in last 6 months
+  const [allInvoices, statusGroups, topCustomerRows] = await Promise.all([
+    // Monthly revenue: sum of all non-cancelled invoice totals in last 6 months
     prisma.invoice.findMany({
       where: {
         organizationId,
-        status: 'PAID',
+        status: { not: 'CANCELLED' },
         issueDate: { gte: sixMonthsAgo },
       },
       select: { issueDate: true, total: true },
@@ -90,7 +110,7 @@ export default async function DashboardPage() {
     }),
   ]);
 
-  // Aggregate paid invoices into monthly buckets
+  // Aggregate invoices into monthly buckets
   const monthBuckets = new Map<string, number>();
   for (let i = 0; i < 6; i++) {
     const d = new Date();
@@ -98,14 +118,17 @@ export default async function DashboardPage() {
     const key = d.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
     monthBuckets.set(key, 0);
   }
-  for (const inv of paidInvoices) {
+  for (const inv of allInvoices) {
     const d = new Date(inv.issueDate);
     const key = d.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
     if (monthBuckets.has(key)) {
-      monthBuckets.set(key, (monthBuckets.get(key) ?? 0) + Number(inv.total));
+      monthBuckets.set(key, (monthBuckets.get(key) ?? 0) + toRupees(inv.total));
     }
   }
-  const revenueData = Array.from(monthBuckets, ([month, revenue]) => ({ month, revenue }));
+  const revenueData = Array.from(monthBuckets, ([month, revenue]) => ({
+    month,
+    revenue,
+  }));
 
   // Invoice status data
   const statusData = (['DRAFT', 'SENT', 'PARTIALLY_PAID', 'PAID', 'OVERDUE', 'CANCELLED'] as const).map((status) => {
@@ -124,16 +147,57 @@ export default async function DashboardPage() {
   const nameMap = new Map(customerNames.map((c) => [c.id, c.name]));
   const topCustomers = topCustomerRows.map((r) => ({
     name: nameMap.get(r.customerId) ?? 'Unknown',
-    revenue: Number(r._sum.total ?? 0),
+    revenue: toRupees(r._sum.total ?? 0),
   }));
 
-  const totalRevenue = Number(revenueResult._sum.amount ?? 0);
+  // Total Revenue based on all non-cancelled invoices
+  const totalRevenueResult = await prisma.invoice.aggregate({
+    where: { 
+      organizationId,
+      status: { not: 'CANCELLED' }
+    },
+    _sum: { total: true }
+  });
+  const totalRevenue = Number(totalRevenueResult._sum.total ?? 0);
+  const gstResult = await prisma.invoice.aggregate({
+    where: {
+      organizationId,
+      status: { not: "CANCELLED" },
+    },
+    _sum: { cgstTotal: true, sgstTotal: true, igstTotal: true },
+  });
+  const totalGst =
+    Number(gstResult._sum.cgstTotal ?? 0) +
+    Number(gstResult._sum.sgstTotal ?? 0) +
+    Number(gstResult._sum.igstTotal ?? 0);
+  const totalRevenueExclGst = totalRevenue - totalGst;
   const pendingRevenue = Number(pendingInvoices._sum.total ?? 0) - Number(paymentsResult._sum.amount ?? 0);
 
-  const stats = [
+  // Expense summary data
+  const expIncome = expenseSummary?.currentMonth.income ?? 0;
+  const expExpenses = expenseSummary?.currentMonth.expenses ?? 0;
+  const expNet = expenseSummary?.currentMonth.net ?? 0;
+  const gstMonthOptions = buildGstMonthOptions(
+    expenseSummary?.gstByMonth ?? [],
+    formatExpenseInr,
+    currentUtcMonthKey(),
+  );
+  const incomeTrend = trendLine(expenseSummary?.trends.incomePct ?? null, false);
+  const expenseTrend = trendLine(expenseSummary?.trends.expensePct ?? null, true);
+  const netTrend = trendLine(expenseSummary?.trends.netPct ?? null, false);
+
+  const expenseChartData = (expenseSummary?.chartMonths ?? []).map((m) => ({
+    month: m.label,
+    income: m.income,
+    expenses: m.expenses,
+  }));
+
+  const breakdownRows = amountsToBreakdownRows(expenseSummary?.expenseBreakdown ?? []);
+
+  const invoiceStats = [
     { 
-      label: "Collected Revenue", 
-      value: `₹${Number(totalRevenue).toLocaleString('en-IN')}`, 
+      label: "Total Revenue", 
+      value: formatInvoiceInr(totalRevenueExclGst), 
       icon: CheckCircle2,
       color: "text-green-600",
       bg: "bg-green-500/10",
@@ -141,7 +205,7 @@ export default async function DashboardPage() {
     },
     { 
       label: "Pending Payments", 
-      value: `₹${Number(pendingRevenue).toLocaleString('en-IN')}`, 
+      value: formatInvoiceInr(pendingRevenue), 
       icon: Clock,
       color: "text-amber-600",
       bg: "bg-amber-500/10",
@@ -176,16 +240,112 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {stats.map((s) => (
-          <div key={s.label} className={`bg-card border ${s.border} p-6 rounded-3xl shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all relative overflow-hidden group`}>
-            <div className={`absolute top-0 right-0 w-24 h-24 ${s.bg} rounded-bl-full -mr-12 -mt-12 transition-transform group-hover:scale-125`} />
-            <s.icon className={`w-6 h-6 ${s.color} mb-5`} />
-            <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">{s.label}</p>
-            <p className="text-3xl font-bold mt-1 tracking-tight text-foreground">{s.value}</p>
+      {/* ── Financial Health (Business Expenses) ── */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Financial Health · This Month</p>
+          <Link href="/dashboard/expenses" className="text-xs font-bold text-primary hover:opacity-80 flex items-center gap-1 transition-all">
+            View Details <ArrowUpRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+        <div className="grid grid-cols-2 items-stretch gap-4 md:grid-cols-4">
+          {/* Total Income */}
+          <div className="bg-card border border-green-500/20 p-5 rounded-3xl shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all relative overflow-hidden group h-full">
+            <div className="absolute top-0 right-0 w-20 h-20 bg-green-500/10 rounded-bl-full -mr-10 -mt-10 transition-transform group-hover:scale-125" />
+            <ArrowUpRight className="w-5 h-5 text-green-600 mb-4" />
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Total Income</p>
+            <p className="text-2xl font-bold mt-1 tracking-tight text-foreground">{formatExpenseInr(expIncome)}</p>
+            <div className="mt-1.5 min-h-[15px]">
+              {incomeTrend.text && (
+                <p className={`text-[10px] font-semibold ${incomeTrend.trendUp ? 'text-green-600' : 'text-orange-500'}`}>
+                  {incomeTrend.text}
+                </p>
+              )}
+            </div>
           </div>
-        ))}
+          {/* Total Expenses */}
+          <div className="bg-card border border-orange-500/20 p-5 rounded-3xl shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all relative overflow-hidden group h-full">
+            <div className="absolute top-0 right-0 w-20 h-20 bg-orange-500/10 rounded-bl-full -mr-10 -mt-10 transition-transform group-hover:scale-125" />
+            <ArrowDownRight className="w-5 h-5 text-orange-500 mb-4" />
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Total Expenses</p>
+            <p className="text-2xl font-bold mt-1 tracking-tight text-foreground">{formatExpenseInr(expExpenses)}</p>
+            <div className="mt-1.5 min-h-[15px]">
+              {expenseTrend.text && (
+                <p className={`text-[10px] font-semibold ${expenseTrend.trendUp ? 'text-green-600' : 'text-orange-500'}`}>
+                  {expenseTrend.text}
+                </p>
+              )}
+            </div>
+          </div>
+          {/* Net Profit */}
+          <div className="bg-card border border-primary/20 p-5 rounded-3xl shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all relative overflow-hidden group h-full">
+            <div className="absolute top-0 right-0 w-20 h-20 bg-primary/10 rounded-bl-full -mr-10 -mt-10 transition-transform group-hover:scale-125" />
+            <DollarSign className="w-5 h-5 text-primary mb-4" />
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Net Profit</p>
+            <p className="text-2xl font-bold mt-1 tracking-tight text-foreground">{formatExpenseInr(expNet)}</p>
+            <div className="mt-1.5 min-h-[15px]">
+              {netTrend.text && (
+                <p className={`text-[10px] font-semibold ${netTrend.trendUp ? 'text-green-600' : 'text-orange-500'}`}>
+                  {netTrend.text}
+                </p>
+              )}
+            </div>
+          </div>
+          {/* Output GST */}
+          <OutputGstCard months={gstMonthOptions} />
+        </div>
+      </div>
+
+      {/* ── Income vs Expenses + Expense Breakdown ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <section className="lg:col-span-3 bg-card border border-border rounded-3xl shadow-sm overflow-hidden group hover:shadow-lg transition-shadow">
+          <div className="px-6 py-5 border-b border-border/50 flex items-center justify-between bg-secondary/20">
+            <h2 className="font-bold heading-display flex items-center gap-2 text-foreground">
+              <TrendingUp className="w-4 h-4 text-primary" />
+              Income vs Expenses
+            </h2>
+            <span className="inline-flex items-center rounded-full border border-border bg-muted/50 px-3 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+              Last 6 Months
+            </span>
+          </div>
+          <div className="p-6">
+            <IncomeVsExpensesChartWrapper data={expenseChartData} />
+          </div>
+        </section>
+
+        <section className="lg:col-span-2 bg-card border border-border rounded-3xl shadow-sm overflow-hidden group hover:shadow-lg transition-shadow">
+          <div className="px-6 py-5 border-b border-border/50 flex items-center justify-between bg-secondary/20">
+            <h2 className="font-bold heading-display flex items-center gap-2 text-foreground">
+              <DollarSign className="w-4 h-4 text-orange-500" />
+              Expense Breakdown
+            </h2>
+            <span className="inline-flex items-center rounded-full border border-border bg-muted/50 px-3 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+              This Month
+            </span>
+          </div>
+          <div className="p-6">
+            {breakdownRows.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-8 text-center">No expense entries this month.</p>
+            ) : (
+              <ExpenseBreakdownWrapper rows={breakdownRows} />
+            )}
+          </div>
+        </section>
+      </div>
+
+      {/* ── Invoice Stats ── */}
+      <div>
+        <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-4">Invoice Overview</p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {invoiceStats.map((s) => (
+            <div key={s.label} className={`bg-card border ${s.border} p-6 rounded-3xl shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all relative overflow-hidden group`}>
+              <div className={`absolute top-0 right-0 w-24 h-24 ${s.bg} rounded-bl-full -mr-12 -mt-12 transition-transform group-hover:scale-125`} />
+              <s.icon className={`w-6 h-6 ${s.color} mb-5`} />
+              <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">{s.label}</p>
+              <p className="text-3xl font-bold mt-1 tracking-tight text-foreground">{s.value}</p>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Revenue Analytics Charts */}
@@ -233,11 +393,13 @@ export default async function DashboardPage() {
                       <p className="text-[10px] text-muted-foreground/70 mt-1">{new Date(inv.issueDate).toLocaleDateString('en-IN')}</p>
                     </td>
                     <td className="px-8 py-5 text-muted-foreground font-medium">{inv.customer.name}</td>
-                    <td className="px-8 py-5 font-bold text-foreground">₹{Number(inv.total).toLocaleString('en-IN')}</td>
+                    <td className="px-8 py-5 font-bold text-foreground">{formatInvoiceInr(inv.total)}</td>
                     <td className="px-8 py-5 text-right">
                       <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${
                         inv.status === 'PAID' ? 'bg-green-500/10 text-green-600' : 
                         inv.status === 'SENT' ? 'bg-blue-500/10 text-blue-600' : 
+                        inv.status === 'DRAFT' ? 'bg-slate-500/10 text-slate-500' :
+                        inv.status === 'OVERDUE' ? 'bg-red-500/10 text-red-500' :
                         'bg-muted text-muted-foreground/70'
                       }`}>
                         {inv.status}
@@ -291,4 +453,18 @@ export default async function DashboardPage() {
       </div>
     </div>
   );
+}
+
+// ── Inline server-side wrappers for client components ──
+import { IncomeExpenseChart } from './expenses/_components/IncomeExpenseChart';
+import { ExpenseBreakdownList } from './expenses/_components/ExpenseBreakdownList';
+import { OutputGstCard } from './expenses/_components/OutputGstCard';
+import type { BreakdownRow } from '@/lib/expenses/breakdown';
+
+function IncomeVsExpensesChartWrapper({ data }: { data: { month: string; income: number; expenses: number }[] }) {
+  return <IncomeExpenseChart data={data} />;
+}
+
+function ExpenseBreakdownWrapper({ rows }: { rows: BreakdownRow[] }) {
+  return <ExpenseBreakdownList rows={rows} />;
 }

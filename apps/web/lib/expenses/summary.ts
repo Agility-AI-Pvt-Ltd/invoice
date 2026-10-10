@@ -1,5 +1,11 @@
 import { prisma } from "@repo/db";
 import type { ExpenseLedgerKind } from "@repo/db";
+import { toRupees } from "@/lib/money";
+
+/** Expense ledger is always paise; normalize invoice totals into the same unit. */
+function invoiceTotalAsPaise(total: number | string | null | undefined): number {
+  return Math.round(toRupees(total) * 100);
+}
 
 export type ExpenseDashboardSummary = {
   chartMonths: {
@@ -34,8 +40,25 @@ export type ExpenseDashboardSummary = {
     description: string | null;
     amount: number;
     occurredAt: string;
+    isPayment?: boolean;
   }[];
   burnPerDay: number;
+  gstToPay: number;
+  gstBreakdown: {
+    cgst: number;
+    sgst: number;
+    igst: number;
+  };
+  gstByMonth: {
+    monthKey: string;
+    label: string;
+    total: number;
+    breakdown: {
+      cgst: number;
+      sgst: number;
+      igst: number;
+    };
+  }[];
 };
 
 function utcMonthBounds(year: number, month: number): { start: Date; end: Date } {
@@ -89,7 +112,7 @@ export async function computeExpenseSummary(
   const rangeStart = utcMonthBounds(oldestMonth.year, oldestMonth.month).start;
   const rangeEnd = utcMonthBounds(cy, cm).end;
 
-  const [ledgerRows, recent] = await Promise.all([
+  const [ledgerRows, recentLedger, invoiceRows, recentInvoices] = await Promise.all([
     prisma.expenseLedgerEntry.findMany({
       where: {
         organizationId,
@@ -115,12 +138,48 @@ export async function computeExpenseSummary(
         occurredAt: true,
       },
     }),
+    prisma.invoice.findMany({
+      where: {
+        organizationId,
+        issueDate: { gte: rangeStart, lte: rangeEnd },
+        status: { not: "CANCELLED" },
+      },
+      select: {
+        total: true,
+        issueDate: true,
+        invoiceNumber: true,
+        cgstTotal: true,
+        sgstTotal: true,
+        igstTotal: true,
+      },
+    }),
+    prisma.invoice.findMany({
+      where: {
+        organizationId,
+        status: { not: "CANCELLED" },
+      },
+      orderBy: { issueDate: "desc" },
+      take: 15,
+      select: {
+        id: true,
+        total: true,
+        issueDate: true,
+        invoiceNumber: true,
+        customer: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    }),
   ]);
 
   const chartMap = new Map<string, { income: number; expenses: number }>();
+  const gstMap = new Map<string, { cgst: number; sgst: number; igst: number }>();
   for (const m of sixMonths) {
     const key = `${m.year}-${String(m.month).padStart(2, "0")}`;
     chartMap.set(key, { income: 0, expenses: 0 });
+    gstMap.set(key, { cgst: 0, sgst: 0, igst: 0 });
   }
 
   const curBounds = utcMonthBounds(cy, cm);
@@ -167,10 +226,67 @@ export async function computeExpenseSummary(
     }
   }
 
+  let curMonthGst = 0;
+  let curMonthCgst = 0;
+  let curMonthSgst = 0;
+  let curMonthIgst = 0;
+  for (const row of invoiceRows) {
+    const cgst = invoiceTotalAsPaise(row.cgstTotal);
+    const sgst = invoiceTotalAsPaise(row.sgstTotal);
+    const igst = invoiceTotalAsPaise(row.igstTotal);
+    const gst = cgst + sgst + igst;
+    const baseAmt = invoiceTotalAsPaise(row.total) - gst;
+    const k = monthKeyFromDate(new Date(row.issueDate));
+    const bucket = chartMap.get(k);
+    if (bucket) {
+      bucket.income += baseAmt;
+    }
+
+    const gstBucket = gstMap.get(k);
+    if (gstBucket) {
+      gstBucket.cgst += cgst;
+      gstBucket.sgst += sgst;
+      gstBucket.igst += igst;
+    }
+
+    const t = new Date(row.issueDate).getTime();
+    if (t >= curBounds.start.getTime() && t <= curBounds.end.getTime()) {
+      curIncome += baseAmt;
+      const category = "Invoices";
+      incomeCategoryMonth.set(
+        category,
+        (incomeCategoryMonth.get(category) ?? 0) + baseAmt,
+      );
+      curMonthGst += gst;
+      curMonthCgst += cgst;
+      curMonthSgst += sgst;
+      curMonthIgst += igst;
+    }
+
+    if (t >= prevBounds.start.getTime() && t <= prevBounds.end.getTime()) {
+      prevIncome += baseAmt;
+    }
+  }
+
   const chartMonths = sixMonths.map(({ year, month, label }) => {
     const key = `${year}-${String(month).padStart(2, "0")}`;
     const b = chartMap.get(key) ?? { income: 0, expenses: 0 };
     return { monthKey: key, label, income: b.income, expenses: b.expenses };
+  });
+
+  const gstByMonth = sixMonths.map(({ year, month }) => {
+    const key = `${year}-${String(month).padStart(2, "0")}`;
+    const b = gstMap.get(key) ?? { cgst: 0, sgst: 0, igst: 0 };
+    const label = new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString(
+      "en-IN",
+      { month: "short", year: "numeric", timeZone: "UTC" },
+    );
+    return {
+      monthKey: key,
+      label,
+      total: b.cgst + b.sgst + b.igst,
+      breakdown: b,
+    };
   });
 
   const expenseBreakdown = [...expenseCategoryMonth.entries()]
@@ -183,6 +299,29 @@ export async function computeExpenseSummary(
 
   const dim = daysInUtcMonth(cy, cm);
   const burnPerDay = dim > 0 ? Math.round((curExpense / dim) * 100) / 100 : 0;
+
+  const combinedRecent = [
+    ...recentLedger.map((r) => ({
+      id: r.id,
+      kind: r.kind,
+      category: r.category,
+      description: r.description,
+      amount: Number(r.amount),
+      occurredAt: r.occurredAt,
+      isPayment: false,
+    })),
+    ...recentInvoices.map((inv) => ({
+      id: inv.id,
+      kind: "INCOME" as const,
+      category: "Invoices",
+      description: `Invoice #${inv.invoiceNumber} (${inv.customer.name})`,
+      amount: invoiceTotalAsPaise(inv.total),
+      occurredAt: inv.issueDate,
+      isPayment: true,
+    })),
+  ]
+    .sort((a, b) => b.occurredAt.getTime() - a.occurredAt.getTime())
+    .slice(0, 15);
 
   return {
     chartMonths,
@@ -205,15 +344,23 @@ export async function computeExpenseSummary(
     },
     expenseBreakdown,
     incomeByCategory,
-    recent: recent.map((r) => ({
+    recent: combinedRecent.map((r) => ({
       id: r.id,
       kind: r.kind,
       category: r.category,
       description: r.description,
-      amount: Number(r.amount),
+      amount: r.amount,
       occurredAt: r.occurredAt.toISOString(),
+      isPayment: r.isPayment,
     })),
     burnPerDay,
+    gstToPay: curMonthGst,
+    gstBreakdown: {
+      cgst: curMonthCgst,
+      sgst: curMonthSgst,
+      igst: curMonthIgst,
+    },
+    gstByMonth,
   };
 }
 

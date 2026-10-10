@@ -96,13 +96,13 @@ export async function PATCH(
       | {
           description: string;
           hsnCode: string | null;
-          quantity: number;
+          quantity: Prisma.Decimal;
           unitPrice: number;
           taxRate: Prisma.Decimal;
-          cgstAmount: Prisma.Decimal;
-          sgstAmount: Prisma.Decimal;
-          igstAmount: Prisma.Decimal;
-          total: Prisma.Decimal;
+          cgstAmount: number;
+          sgstAmount: number;
+          igstAmount: number;
+          total: number;
         }[]
       | undefined = undefined;
 
@@ -115,21 +115,21 @@ export async function PATCH(
       const isInterState =
         orgState != null && custState != null && orgState !== custState;
       const totals = computeInvoiceTotals(items, isInterState);
-      subTotal = new Prisma.Decimal(totals.subTotal);
-      cgstTotal = new Prisma.Decimal(totals.cgstTotal);
-      sgstTotal = new Prisma.Decimal(totals.sgstTotal);
-      igstTotal = new Prisma.Decimal(totals.igstTotal);
-      total = new Prisma.Decimal(totals.grandTotal);
+      subTotal = Math.round(totals.subTotal);
+      cgstTotal = Math.round(totals.cgstTotal);
+      sgstTotal = Math.round(totals.sgstTotal);
+      igstTotal = Math.round(totals.igstTotal);
+      total = Math.round(totals.grandTotal);
       processedItems = totals.processedItems.map((i) => ({
         description: i.description,
         hsnCode: i.hsnCode,
-        quantity: i.quantity,
-        unitPrice: i.unitPrice,
+        quantity: new Prisma.Decimal(i.quantity),
+        unitPrice: Number(i.unitPrice),
         taxRate: new Prisma.Decimal(i.taxRate),
-        cgstAmount: new Prisma.Decimal(i.cgstAmount),
-        sgstAmount: new Prisma.Decimal(i.sgstAmount),
-        igstAmount: new Prisma.Decimal(i.igstAmount),
-        total: new Prisma.Decimal(i.total),
+        cgstAmount: Math.round(i.cgstAmount),
+        sgstAmount: Math.round(i.sgstAmount),
+        igstAmount: Math.round(i.igstAmount),
+        total: Math.round(i.total),
       }));
     }
 

@@ -7,6 +7,7 @@ import { logger } from "@/lib/logger";
 import { stateCodeSchema, indianPhoneSchema } from "@repo/domain";
 import { getSessionOrThrow, getOrgOrThrow } from "../../../lib/auth";
 import { enforceRateLimit, expensiveActionLimit } from "@/lib/ratelimit-api";
+import { toStoredAmount } from "@/lib/money";
 
 export async function POST(request: Request) {
   const context = "api:invoices:create";
@@ -34,6 +35,13 @@ export async function POST(request: Request) {
       shippingAddress,
       shippingName,
       customerDetails,
+      template,
+      invoiceRemarks,
+      invoiceTerms,
+      paymentMode,
+      roundOff,
+      reverseCharge,
+      bankDetails,
     } = body;
 
     // 1. Basic Validation
@@ -105,22 +113,38 @@ export async function POST(request: Request) {
         });
       }
 
-      // 2b. Auto-save Products
+      // 2b. Auto-save Products (Batch query matching names first to minimize roundtrips)
+      const itemDescriptions = items
+        .map((i: any) => i.description?.trim())
+        .filter((desc: any): desc is string => !!desc);
+
+      const existingProducts = itemDescriptions.length > 0
+        ? await tx.product.findMany({
+            where: {
+              organizationId: organization.id,
+              name: { in: itemDescriptions, mode: "insensitive" },
+            },
+          })
+        : [];
+
+      const existingProductMap = new Map(
+        existingProducts.map((p) => [p.name.toLowerCase(), p])
+      );
+
       for (const item of items) {
         if (item.description) {
-          const exists = await tx.product.findFirst({
-            where: { organizationId: organization.id, name: item.description },
-          });
-          if (!exists) {
-            await tx.product.create({
+          const descLower = item.description.trim().toLowerCase();
+          if (!existingProductMap.has(descLower)) {
+            const newProduct = await tx.product.create({
               data: {
                 organizationId: organization.id,
                 name: item.description,
-                price: Number(item.unitPrice) || 0,
+                price: toStoredAmount(item.unitPrice),
                 hsnCode: item.hsnCode || null,
                 taxRate: Number(item.taxRate) || 0,
               },
             });
+            existingProductMap.set(descLower, newProduct);
           }
         }
       }
@@ -134,6 +158,19 @@ export async function POST(request: Request) {
         : (!!orgState && !!supplyState && orgState !== supplyState);
 
       const totals = computeInvoiceTotals(items, isInterState);
+      const roundOffStored = toStoredAmount(Number(roundOff) || 0);
+
+      if (bankDetails && typeof bankDetails === "object") {
+        await tx.organization.update({
+          where: { id: organization.id },
+          data: {
+            bankName: bankDetails.bankName?.trim() || null,
+            bankAccount: bankDetails.bankAccount?.trim() || null,
+            bankIfsc: bankDetails.bankIfsc?.trim() || null,
+            bankAccountType: bankDetails.bankAccountType?.trim() || null,
+          },
+        });
+      }
 
       // 2d. Create Invoice Items
       const itemCreates = await buildInvoiceItemCreates(
@@ -158,12 +195,18 @@ export async function POST(request: Request) {
           sgstTotal: totals.sgstTotal,
           igstTotal: totals.igstTotal,
           discountTotal: totals.discountTotal,
-          total: totals.grandTotal,
+          total: totals.grandTotal + roundOffStored,
           status: "DRAFT",
           billingAddress,
           shippingAddress,
           shippingName,
           customerDetails,
+          invoiceRemarks: invoiceRemarks?.trim() || null,
+          invoiceTerms: invoiceTerms?.trim() || null,
+          paymentMode: paymentMode?.trim() || null,
+          roundOff: roundOffStored,
+          reverseCharge: Boolean(reverseCharge),
+          pdfTemplate: template === "tax" ? "tax" : template || null,
           items: { create: itemCreates },
         },
         include: { items: true, customer: true },
@@ -181,6 +224,9 @@ export async function POST(request: Request) {
       });
 
       return invoice;
+    }, {
+      maxWait: 10000,
+      timeout: 30000,
     });
 
     logger.info(context, "Invoice created successfully", { invoiceId: result.id, invoiceNumber });

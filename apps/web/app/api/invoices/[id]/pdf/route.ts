@@ -32,12 +32,14 @@ export async function GET(
     }
 
     // Query param overrides org default (user picked in UI)
-    const allowedTemplates = ["modern", "classic", "minimal"];
+    const allowedTemplates = ["modern", "classic", "minimal", "tax"];
     const requestedTemplate = searchParams.get("template");
     const template =
       requestedTemplate && allowedTemplates.includes(requestedTemplate)
         ? requestedTemplate
-        : (invoice.organization as any).defaultTemplate ?? "modern";
+        : (invoice as any).pdfTemplate ??
+          (invoice.organization as any).defaultTemplate ??
+          "modern";
 
     if (!allowedTemplates.includes(template)) {
       return NextResponse.json(

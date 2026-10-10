@@ -3,6 +3,7 @@ import { prisma } from "@repo/db";
 import { getSession } from "@/lib/auth";
 import { checkAuthRateLimit } from "@/lib/ratelimit";
 import { env } from "@/lib/env";
+import { formatInr } from "@/lib/money";
 
 export async function POST(
   req: Request,
@@ -54,7 +55,7 @@ export async function POST(
     
     
     // We construct a friendly message
-    const amount = Number(invoice.total).toFixed(2);
+    const amount = formatInr(invoice.total, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace(/^₹/, "");
     const paymentLink = invoice.paymentLinks[0]?.shortUrl;
     const defaultMessage = `Hi ${invoice.customer.name}, your invoice ${invoice.invoiceNumber} from ${invoice.organization.name} for ₹${amount} is ready. 
 Due date: ${new Date(invoice.dueDate).toLocaleDateString('en-IN')}.

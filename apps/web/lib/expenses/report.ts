@@ -14,14 +14,23 @@ export async function computeExpenseReport(
   const cy = now.getUTCFullYear();
   const rangeStart = new Date(Date.UTC(cy - 3, 0, 1));
 
-  const rows = await prisma.expenseLedgerEntry.findMany({
-    where: { organizationId, occurredAt: { gte: rangeStart } },
-    select: { kind: true, amount: true, occurredAt: true },
-  });
+  const [ledgerRows, paymentRows] = await Promise.all([
+    prisma.expenseLedgerEntry.findMany({
+      where: { organizationId, occurredAt: { gte: rangeStart } },
+      select: { kind: true, amount: true, occurredAt: true },
+    }),
+    prisma.payment.findMany({
+      where: {
+        invoice: { organizationId },
+        paymentDate: { gte: rangeStart },
+      },
+      select: { amount: true, paymentDate: true },
+    }),
+  ]);
 
   const map = new Map<string, { income: number; expenses: number }>();
 
-  for (const row of rows) {
+  for (const row of ledgerRows) {
     const d = new Date(row.occurredAt);
     const y = d.getUTCFullYear();
     const m = d.getUTCMonth() + 1;
@@ -38,6 +47,25 @@ export async function computeExpenseReport(
     const amt = Number(row.amount);
     if (row.kind === "INCOME") bucket.income += amt;
     else bucket.expenses += amt;
+    map.set(key, bucket);
+  }
+
+  for (const row of paymentRows) {
+    const d = new Date(row.paymentDate);
+    const y = d.getUTCFullYear();
+    const m = d.getUTCMonth() + 1;
+    let key: string;
+    if (granularity === "annual") {
+      key = String(y);
+    } else if (granularity === "quarterly") {
+      const q = Math.floor((m - 1) / 3) + 1;
+      key = `${y} Q${q}`;
+    } else {
+      key = `${y}-${String(m).padStart(2, "0")}`;
+    }
+    const bucket = map.get(key) ?? { income: 0, expenses: 0 };
+    const amt = Number(row.amount);
+    bucket.income += amt;
     map.set(key, bucket);
   }
 

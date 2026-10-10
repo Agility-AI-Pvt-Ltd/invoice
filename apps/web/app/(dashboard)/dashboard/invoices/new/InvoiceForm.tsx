@@ -17,6 +17,13 @@ import {
   CheckCircle2,
   Box,
 } from "lucide-react";
+import { computeInvoiceTotals } from "@/lib/gst";
+import {
+  DEFAULT_TAX_INVOICE_TERMS,
+  DEFAULT_TAX_PAYMENT_MODE,
+} from "@/lib/tax-invoice-defaults";
+import { deriveRateOnlyFromTargetTotal } from "@/lib/gst-compute";
+import { formatInr, toRupees } from "@/lib/money";
 
 type Customer = { id: string; name: string; stateCode: string | null; address?: string | null };
 type Product = {
@@ -72,10 +79,28 @@ type LineItem = {
   productId: string | null;
   description: string;
   hsnCode: string;
+  referenceId: string;
+  lineDate: string;
   quantity: number;
   unitPrice: number;
   taxRate: number;
   discount: number;
+};
+
+type ReimbursementRow = {
+  id: string;
+  description: string;
+  referenceId: string;
+  lineDate: string;
+  amount: number;
+};
+
+type OrgProfile = {
+  name: string;
+  bankName?: string | null;
+  bankAccount?: string | null;
+  bankIfsc?: string | null;
+  bankAccountType?: string | null;
 };
 
 const TEMPLATES = [
@@ -122,6 +147,25 @@ const TEMPLATES = [
         <div className="h-1.5 bg-muted w-3/4 rounded" />
         <div className="h-1.5 bg-muted w-full rounded" />
         <div className="h-1.5 bg-muted w-2/3 rounded" />
+      </div>
+    ),
+  },
+  {
+    id: "tax",
+    name: "Tax Invoice",
+    desc: "Formal GST invoice with bank block",
+    preview: (
+      <div className="w-full h-20 bg-background border border-foreground rounded overflow-hidden flex flex-col text-[7px]">
+        <div className="text-center font-bold py-0.5 border-b border-foreground">TAX INVOICE</div>
+        <div className="flex flex-1">
+          <div className="w-1/2 border-r border-border p-1 space-y-0.5">
+            <div className="h-1.5 bg-foreground/80 w-3/4 rounded" />
+            <div className="h-1 bg-muted w-full rounded" />
+          </div>
+          <div className="w-1/2 p-1">
+            <div className="h-1 bg-muted w-full rounded" />
+          </div>
+        </div>
       </div>
     ),
   },
@@ -302,6 +346,12 @@ type ExistingData = {
   placeOfSupply: string;
   notes: string;
   customerDetails?: string | null;
+  invoiceRemarks?: string | null;
+  invoiceTerms?: string | null;
+  paymentMode?: string | null;
+  roundOff?: number;
+  reverseCharge?: boolean;
+  pdfTemplate?: string | null;
   billingAddress?: string | null;
   shippingAddress?: string | null;
   shippingName?: string | null;
@@ -309,12 +359,77 @@ type ExistingData = {
     productId: string | null;
     description: string;
     hsnCode: string;
+    referenceId?: string;
+    lineDate?: string;
     quantity: number;
     unitPrice: number;
     taxRate: number;
     discount: number;
   }[];
 };
+
+type FormItemSeed = ExistingData["items"][number];
+
+function splitFormLineItems(raw: FormItemSeed[]) {
+  const taxable: LineItem[] = [];
+  const reimb: ReimbursementRow[] = [];
+  raw.forEach((item, index) => {
+    if (Number(item.taxRate) === 0) {
+      const amount =
+        Number(item.quantity) * Number(item.unitPrice) -
+        Number(item.discount || 0);
+      reimb.push({
+        id: `reimb-${index}`,
+        description: item.description,
+        referenceId: item.referenceId ?? item.hsnCode ?? "",
+        lineDate: item.lineDate ?? "",
+        amount: Math.max(0, amount),
+      });
+      return;
+    }
+    taxable.push({
+      id: String(taxable.length + 1),
+      productId: item.productId ?? null,
+      description: item.description,
+      hsnCode: item.hsnCode,
+      referenceId: item.referenceId ?? "",
+      lineDate: item.lineDate ?? "",
+      quantity: Number(item.quantity),
+      unitPrice: Number(item.unitPrice),
+      taxRate: Number(item.taxRate),
+      discount: Number(item.discount || 0),
+    });
+  });
+  return { taxable, reimb };
+}
+
+function reimbursementToLineItem(row: ReimbursementRow): LineItem {
+  return {
+    id: row.id,
+    productId: null,
+    description: row.description,
+    hsnCode: "",
+    referenceId: row.referenceId,
+    lineDate: row.lineDate,
+    quantity: 1,
+    unitPrice: row.amount,
+    taxRate: 0,
+    discount: 0,
+  };
+}
+
+const defaultTaxableLine = (): LineItem => ({
+  id: "1",
+  productId: null,
+  description: "",
+  hsnCode: "",
+  referenceId: "",
+  lineDate: "",
+  quantity: 0,
+  unitPrice: 0,
+  taxRate: 18,
+  discount: 0,
+});
 
 // ------ Main Form ------
 export default function InvoiceForm({
@@ -323,6 +438,7 @@ export default function InvoiceForm({
   orgStateCode,
   defaultInvoiceNumber,
   defaultTemplate,
+  orgProfile,
   editMode = false,
   existingData,
 }: {
@@ -331,13 +447,17 @@ export default function InvoiceForm({
   orgStateCode: string;
   defaultInvoiceNumber: string;
   defaultTemplate: string;
+  orgProfile?: OrgProfile;
   editMode?: boolean;
   existingData?: ExistingData;
 }) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [selectedTemplate, setSelectedTemplate] = useState(defaultTemplate);
+  const [selectedTemplate, setSelectedTemplate] = useState(
+    existingData?.pdfTemplate || defaultTemplate,
+  );
+  const isTaxTemplate = selectedTemplate === "tax";
   const [showAddCustomer, setShowAddCustomer] = useState(false);
 
   const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
@@ -350,6 +470,25 @@ export default function InvoiceForm({
   ); // YYYY-MM-DD
   const [dueDate, setDueDate] = useState(existingData?.dueDate ?? "");
   const [notes, setNotes] = useState(existingData?.notes ?? "");
+  const [invoiceRemarks, setInvoiceRemarks] = useState(
+    existingData?.invoiceRemarks ?? "",
+  );
+  const [invoiceTerms, setInvoiceTerms] = useState(
+    existingData?.invoiceTerms ?? DEFAULT_TAX_INVOICE_TERMS,
+  );
+  const [paymentMode, setPaymentMode] = useState(
+    existingData?.paymentMode ?? DEFAULT_TAX_PAYMENT_MODE,
+  );
+  const [roundOff, setRoundOff] = useState(existingData?.roundOff ?? 0);
+  const [reverseCharge, setReverseCharge] = useState(
+    existingData?.reverseCharge ?? false,
+  );
+  const [bankName, setBankName] = useState(orgProfile?.bankName ?? "");
+  const [bankAccount, setBankAccount] = useState(orgProfile?.bankAccount ?? "");
+  const [bankIfsc, setBankIfsc] = useState(orgProfile?.bankIfsc ?? "");
+  const [bankAccountType, setBankAccountType] = useState(
+    orgProfile?.bankAccountType ?? "",
+  );
 
   const initialCustomerName = existingData
     ? (initialCustomers.find((c) => c.id === existingData.customerNameOrId)
@@ -368,29 +507,25 @@ export default function InvoiceForm({
   const [shippingName, setShippingName] = useState(existingData?.shippingName ?? "");
   const [sameAsBilling, setSameAsBilling] = useState(editMode ? (!existingData?.shippingAddress || existingData.shippingAddress === existingData.billingAddress) : true);
 
-  const [items, setItems] = useState<LineItem[]>(
-    existingData?.items.map((item, i) => ({
-      id: String(i + 1),
-      productId: item.productId ?? null,
-      description: item.description,
-      hsnCode: item.hsnCode,
-      quantity: Number(item.quantity),
-      unitPrice: Number(item.unitPrice),
-      taxRate: Number(item.taxRate),
-      discount: Number(item.discount || 0),
-    })) ?? [
-      {
-        id: "1",
-        productId: null,
-        description: "",
-        hsnCode: "",
-        quantity: 0,
-        unitPrice: 0,
-        taxRate: 18,
-        discount: 0,
-      },
-    ],
-  );
+  const [items, setItems] = useState<LineItem[]>(() => {
+    if (existingData?.items?.length) {
+      const split = splitFormLineItems(existingData.items);
+      if (split.taxable.length > 0) return split.taxable;
+    }
+    return [defaultTaxableLine()];
+  });
+
+  const [reimbursements, setReimbursements] = useState<ReimbursementRow[]>(() => {
+    if (existingData?.items?.length) {
+      return splitFormLineItems(existingData.items).reimb;
+    }
+    return [];
+  });
+
+  /** Line items whose rate was derived from a negotiated total (not manually edited). */
+  const [negotiatedRates, setNegotiatedRates] = useState<Set<string>>(new Set());
+  /** In-progress total field text while user is negotiating. */
+  const [totalDrafts, setTotalDrafts] = useState<Record<string, string>>({});
 
   const selectedCustomer = useMemo(
     () => customers.find((c) => c.name === customerInput),
@@ -408,28 +543,64 @@ export default function InvoiceForm({
     return !!s1 && !!s2 && s1 !== s2;
   }, [effectiveStateCode, orgStateCode, manualTaxMode]);
 
+  const activeReimbursements = useMemo(
+    () =>
+      isTaxTemplate
+        ? reimbursements.filter(
+            (row) => row.description.trim() && Number(row.amount) > 0,
+          )
+        : [],
+    [isTaxTemplate, reimbursements],
+  );
+
+  const reimbursementTotal = useMemo(
+    () => activeReimbursements.reduce((sum, row) => sum + Number(row.amount), 0),
+    [activeReimbursements],
+  );
+
+  const allItemsForTotals = useMemo(() => {
+    const reimbLines = activeReimbursements.map(reimbursementToLineItem);
+    return [...items, ...reimbLines];
+  }, [items, activeReimbursements]);
+
   const totals = useMemo(() => {
-    let subTotal = 0,
-      cgst = 0,
-      sgst = 0,
-      igst = 0,
-      discountTotal = 0;
-    items.forEach((item) => {
-      const lineTotal = item.quantity * item.unitPrice;
-      const taxableAmount = lineTotal - (item.discount || 0);
-      const tax = (taxableAmount * item.taxRate) / 100;
-      
-      subTotal += lineTotal;
-      discountTotal += (item.discount || 0);
-      
-      if (isInterState) igst += tax;
-      else {
-        cgst += tax / 2;
-        sgst += tax / 2;
-      }
-    });
-    return { subTotal, cgst, sgst, igst, discountTotal, total: subTotal - discountTotal + cgst + sgst + igst };
-  }, [items, isInterState]);
+    const computed = computeInvoiceTotals(
+      allItemsForTotals.map((item) => ({
+        description: item.description,
+        hsnCode: item.hsnCode,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        taxRate: item.taxRate,
+        discount: item.discount || 0,
+        productId: item.productId,
+      })),
+      isInterState,
+    );
+
+    const servicesOnly = computeInvoiceTotals(
+      items.map((item) => ({
+        description: item.description,
+        hsnCode: item.hsnCode,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        taxRate: item.taxRate,
+        discount: item.discount || 0,
+        productId: item.productId,
+      })),
+      isInterState,
+    );
+
+    return {
+      subTotal: computed.subTotal,
+      taxableSubTotal: servicesOnly.subTotal,
+      cgst: computed.cgstTotal,
+      sgst: computed.sgstTotal,
+      igst: computed.igstTotal,
+      discountTotal: computed.discountTotal,
+      total: computed.grandTotal,
+      processedItems: servicesOnly.processedItems,
+    };
+  }, [allItemsForTotals, items, isInterState]);
 
   const addItem = () =>
     setItems((p) => [
@@ -439,6 +610,8 @@ export default function InvoiceForm({
         productId: null,
         description: "",
         hsnCode: "",
+        referenceId: "",
+        lineDate: "",
         quantity: 0,
         unitPrice: 0,
         taxRate: 18,
@@ -446,8 +619,108 @@ export default function InvoiceForm({
       },
     ]);
 
-  const removeItem = (id: string) =>
-    items.length > 1 && setItems((p) => p.filter((i) => i.id !== id));
+  const removeItem = (id: string) => {
+    if (items.length <= 1) return;
+    setItems((p) => p.filter((i) => i.id !== id));
+    setTotalDrafts((p) => {
+      const next = { ...p };
+      delete next[id];
+      return next;
+    });
+    setNegotiatedRates((p) => {
+      const next = new Set(p);
+      next.delete(id);
+      return next;
+    });
+  };
+
+  const applyNegotiatedTotal = (
+    item: LineItem,
+    totalInclTax: number,
+    currentTotalRupees: number,
+  ): number | null => {
+    if (!Number.isFinite(totalInclTax) || totalInclTax <= 0) return null;
+    const qty = Number(item.quantity);
+    if (qty <= 0) return null;
+
+    const newRate = deriveRateOnlyFromTargetTotal(
+      totalInclTax,
+      qty,
+      item.taxRate,
+      item.discount || 0,
+      isInterState,
+      currentTotalRupees,
+    );
+
+    const achieved = toRupees(
+      computeInvoiceTotals(
+        [
+          {
+            description: item.description,
+            quantity: qty,
+            unitPrice: newRate,
+            taxRate: item.taxRate,
+            discount: item.discount || 0,
+          },
+        ],
+        isInterState,
+      ).processedItems[0]?.total ?? 0,
+    );
+
+    if (Math.abs(achieved - currentTotalRupees) < 0.005) return null;
+    if (newRate === item.unitPrice) return null;
+
+    return newRate;
+  };
+
+  const commitNegotiatedTotal = (
+    item: LineItem,
+    totalInclTax: number,
+    currentTotalRupees: number,
+  ) => {
+    const newRate = applyNegotiatedTotal(item, totalInclTax, currentTotalRupees);
+    if (newRate === null) return;
+    setNegotiatedRates((prev) => new Set(prev).add(item.id));
+    setTotalDrafts((prev) => {
+      const next = { ...prev };
+      delete next[item.id];
+      return next;
+    });
+    setItems((prev) =>
+      prev.map((row) =>
+        row.id === item.id ? { ...row, unitPrice: newRate } : row,
+      ),
+    );
+  };
+
+  const resolveItemsForSave = (): LineItem[] => [
+    ...items,
+    ...activeReimbursements.map(reimbursementToLineItem),
+  ];
+
+  const addReimbursement = () =>
+    setReimbursements((prev) => [
+      ...prev,
+      {
+        id: Math.random().toString(36).slice(2, 11),
+        description: "",
+        referenceId: "",
+        lineDate: "",
+        amount: 0,
+      },
+    ]);
+
+  const updateReimbursement = (
+    id: string,
+    field: keyof ReimbursementRow,
+    value: string | number,
+  ) =>
+    setReimbursements((prev) =>
+      prev.map((row) => (row.id === id ? { ...row, [field]: value } : row)),
+    );
+
+  const removeReimbursement = (id: string) =>
+    setReimbursements((prev) => prev.filter((row) => row.id !== id));
 
   const updateItem = (
     id: string,
@@ -467,6 +740,20 @@ export default function InvoiceForm({
     setIsSubmitting(true);
     setError("");
     try {
+      const itemsToSave = resolveItemsForSave();
+      const saveTotals = computeInvoiceTotals(
+        itemsToSave.map((item) => ({
+          description: item.description,
+          hsnCode: item.hsnCode,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          taxRate: item.taxRate,
+          discount: item.discount || 0,
+          productId: item.productId,
+        })),
+        isInterState,
+      );
+
       const url =
         editMode && existingData
           ? `/api/invoices/${existingData.id}`
@@ -491,11 +778,28 @@ export default function InvoiceForm({
           template: selectedTemplate,
           placeOfSupply: effectiveStateCode,
           isInterState,
-          discountTotal: totals.discountTotal,
-          items: items.map((i) => ({
+          discountTotal: saveTotals.discountTotal,
+          invoiceRemarks: isTaxTemplate ? invoiceRemarks : undefined,
+          invoiceTerms: isTaxTemplate ? invoiceTerms : undefined,
+          paymentMode: isTaxTemplate ? paymentMode : undefined,
+          roundOff: isTaxTemplate ? Number(roundOff) || 0 : undefined,
+          reverseCharge: isTaxTemplate ? reverseCharge : undefined,
+          bankDetails: isTaxTemplate
+            ? {
+                bankName,
+                bankAccount,
+                bankIfsc,
+                bankAccountType,
+              }
+            : undefined,
+          items: itemsToSave.map((i) => ({
             productId: i.productId ?? undefined,
             description: i.description,
-            hsnCode: i.hsnCode,
+            hsnCode: i.hsnCode || undefined,
+            referenceId:
+              isTaxTemplate && i.referenceId ? i.referenceId : undefined,
+            lineDate:
+              isTaxTemplate && i.lineDate ? i.lineDate : undefined,
             quantity: Number(i.quantity),
             unitPrice: Number(i.unitPrice),
             taxRate: Number(i.taxRate),
@@ -562,7 +866,7 @@ export default function InvoiceForm({
                 <FileText className="w-4 h-4" />
                 Select Design Template
               </h3>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {TEMPLATES.map((t) => (
                   <button
                     key={t.id}
@@ -594,6 +898,123 @@ export default function InvoiceForm({
                 ))}
               </div>
             </div>
+
+            {isTaxTemplate && (
+              <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-6">
+                <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
+                  Tax Invoice Details
+                </h3>
+                <div>
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                    Header Remarks (programme / project description)
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={invoiceRemarks}
+                    onChange={(e) => setInvoiceRemarks(e.target.value)}
+                    placeholder="e.g. AI training programme dates and scope…"
+                    className={`${inputCls} resize-none min-h-[80px]`}
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="reverseCharge"
+                    checked={reverseCharge}
+                    onChange={(e) => setReverseCharge(e.target.checked)}
+                    className="rounded border-border"
+                  />
+                  <label htmlFor="reverseCharge" className="text-sm font-medium">
+                    Tax payable on reverse charge
+                  </label>
+                </div>
+                <div className="pt-2 border-t border-border/50 space-y-4">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                    Bank account (shown on PDF footer)
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                        Bank name & branch
+                      </label>
+                      <input
+                        value={bankName}
+                        onChange={(e) => setBankName(e.target.value)}
+                        placeholder="IDFC FIRST Bank, Sector 137 Branch"
+                        className={inputCls}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                        Account number
+                      </label>
+                      <input
+                        value={bankAccount}
+                        onChange={(e) => setBankAccount(e.target.value)}
+                        className={inputCls}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                        IFSC
+                      </label>
+                      <input
+                        value={bankIfsc}
+                        onChange={(e) => setBankIfsc(e.target.value)}
+                        className={inputCls}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                        Account type
+                      </label>
+                      <input
+                        value={bankAccountType}
+                        onChange={(e) => setBankAccountType(e.target.value)}
+                        placeholder="Startup Current Account"
+                        className={inputCls}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                    Payment mode
+                  </label>
+                  <input
+                    value={paymentMode}
+                    onChange={(e) => setPaymentMode(e.target.value)}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                    Terms & conditions
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={invoiceTerms}
+                    onChange={(e) => setInvoiceTerms(e.target.value)}
+                    className={`${inputCls} resize-none min-h-[80px]`}
+                  />
+                </div>
+                <div className="w-full md:w-48">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                    Round off (₹)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={roundOff === 0 ? "" : roundOff}
+                    onChange={(e) => setRoundOff(Number(e.target.value) || 0)}
+                    className={inputCls}
+                  />
+                </div>
+                <p className="text-[10px] text-muted-foreground italic">
+                  Add professional fees in Line Items below, then add travel reimbursements in the dedicated section (no GST).
+                </p>
+              </div>
+            )}
 
             {/* Basic Info */}
             <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-6">
@@ -764,7 +1185,9 @@ export default function InvoiceForm({
                   </div>
                   <div className="mt-4">
                     <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1.5 block">
-                      Customer Description / Extra Info (Appears on PDF)
+                      {isTaxTemplate
+                        ? "Attention (e.g. ICT Team)"
+                        : "Customer Description / Extra Info (Appears on PDF)"}
                     </label>
                     <textarea
                       rows={2}
@@ -885,7 +1308,9 @@ export default function InvoiceForm({
 
               <div className="divide-y divide-border">
                 {/* Item Rows */}
-                {items.map((item, index) => (
+                {items.map((item, index) => {
+                  const processed = totals.processedItems[index];
+                  return (
                   <div
                     key={item.id}
                     className="p-6 space-y-4 hover:bg-secondary/20 transition-colors relative group"
@@ -947,7 +1372,7 @@ export default function InvoiceForm({
                         </div>
                         <div className="w-full sm:w-[120px]">
                           <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1 block">
-                            HSN/SAC
+                            {isTaxTemplate ? "SAC Code" : "HSN/SAC"}
                           </label>
                           <input
                             placeholder="HSN/SAC"
@@ -960,7 +1385,9 @@ export default function InvoiceForm({
                         </div>
                         <div className="w-[80px]">
                           <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1 block">
-                            Qty
+                            {isTaxTemplate && Number(item.taxRate) > 0
+                              ? "Days"
+                              : "Qty"}
                           </label>
                           <input
                             type="number"
@@ -975,13 +1402,28 @@ export default function InvoiceForm({
                                 Number(e.target.value) || 0,
                               )
                             }
+                            onBlur={() => {
+                              setTotalDrafts((prev) => {
+                                const next = { ...prev };
+                                delete next[item.id];
+                                return next;
+                              });
+                            }}
                             className={`${inputCls} tabular-nums`}
                           />
                         </div>
                         <div className="w-[130px]">
                           <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1 block flex items-center gap-1">
-                            Rate (₹)
-                            <span className="text-[8px] bg-primary/10 text-primary px-1 rounded">Edit</span>
+                            {isTaxTemplate && Number(item.taxRate) > 0
+                              ? "Per day (₹)"
+                              : "Rate (₹)"}
+                            {negotiatedRates.has(item.id) ? (
+                              <span className="text-[8px] bg-amber-500/15 text-amber-700 px-1 rounded" title="Adjusted from negotiated total">
+                                Adjusted
+                              </span>
+                            ) : (
+                              <span className="text-[8px] bg-primary/10 text-primary px-1 rounded">Edit</span>
+                            )}
                           </label>
                           <input
                             type="number"
@@ -989,14 +1431,21 @@ export default function InvoiceForm({
                             step="0.01"
                             placeholder="0.00"
                             value={item.unitPrice === 0 ? "" : Number(item.unitPrice.toFixed(2))}
-                            onChange={(e) =>
+                            onChange={(e) => {
+                              setNegotiatedRates((prev) => {
+                                const next = new Set(prev);
+                                next.delete(item.id);
+                                return next;
+                              });
                               updateItem(
                                 item.id,
                                 "unitPrice",
                                 Number(e.target.value) || 0,
-                              )
-                            }
-                            className={`${inputCls} border-primary/20 focus:border-primary shadow-sm`}
+                              );
+                            }}
+                            className={`${inputCls} border-primary/20 focus:border-primary shadow-sm ${
+                              negotiatedRates.has(item.id) ? "bg-amber-500/5 border-amber-500/30" : ""
+                            }`}
                           />
                         </div>
                         <div className="w-[100px]">
@@ -1025,13 +1474,23 @@ export default function InvoiceForm({
                           </label>
                           <select
                             value={item.taxRate}
-                            onChange={(e) =>
+                            onChange={(e) => {
+                              setTotalDrafts((prev) => {
+                                const next = { ...prev };
+                                delete next[item.id];
+                                return next;
+                              });
+                              setNegotiatedRates((prev) => {
+                                const next = new Set(prev);
+                                next.delete(item.id);
+                                return next;
+                              });
                               updateItem(
                                 item.id,
                                 "taxRate",
                                 Number(e.target.value),
-                              )
-                            }
+                              );
+                            }}
                             className="w-full h-[42px] text-xs font-bold bg-secondary/50 border border-border rounded-xl px-2 py-1 focus:ring-2 focus:ring-primary/20"
                           >
                             {[0, 5, 12, 18, 28].map((r) => (
@@ -1051,7 +1510,10 @@ export default function InvoiceForm({
                               IGST ({item.taxRate}%)
                             </label>
                             <div className="text-xs font-bold tabular-nums text-primary">
-                              ₹{((item.quantity * item.unitPrice * item.taxRate) / 100).toFixed(2)}
+                              {formatInr(processed?.igstAmount ?? 0, {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
                             </div>
                           </div>
                         ) : null}
@@ -1061,7 +1523,12 @@ export default function InvoiceForm({
                             CGST ({item.taxRate / 2}%)
                           </label>
                           <div className="text-xs font-bold tabular-nums">
-                            ₹{!isInterState ? ((item.quantity * item.unitPrice * (item.taxRate / 2)) / 100).toFixed(2) : "0.00"}
+                            {isInterState
+                              ? formatInr(0, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                              : formatInr(processed?.cgstAmount ?? 0, {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
                           </div>
                         </div>
                         <div className="w-[90px]">
@@ -1069,46 +1536,73 @@ export default function InvoiceForm({
                             SGST ({item.taxRate / 2}%)
                           </label>
                           <div className="text-xs font-bold tabular-nums">
-                            ₹{!isInterState ? ((item.quantity * item.unitPrice * (item.taxRate / 2)) / 100).toFixed(2) : "0.00"}
+                            {isInterState
+                              ? formatInr(0, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                              : formatInr(processed?.sgstAmount ?? 0, {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
                           </div>
                         </div>
                         
-                        <div className="w-[140px] ml-auto">
+                        <div className="w-[160px] ml-auto">
                           <label className="text-[10px] font-bold text-primary uppercase tracking-widest mb-1 block">
                             Total (Incl. Tax)
                           </label>
+                          <p className="text-[9px] text-primary/70 mb-1.5 leading-tight">
+                            Type amount, press Enter — rate updates
+                          </p>
                           <input
                             type="number"
                             min="0"
                             step="0.01"
                             placeholder="0.00"
-                            key={`total-${item.id}-${item.unitPrice}-${item.quantity}-${item.taxRate}-${item.discount}`}
-                            defaultValue={(
-                              ((item.quantity || 0) * (item.unitPrice || 0) - (item.discount || 0)) *
-                              (1 + (item.taxRate || 0) / 100)
-                            ).toFixed(2)}
-                            onBlur={(e) => {
-                              const totalInclTax = Number(e.target.value) || 0;
-                              const qty = item.quantity || 1;
-                              const taxRate = item.taxRate || 0;
-                              const unitPrice = item.unitPrice || 0;
-                              
-                              const newDiscount = (qty * unitPrice) - (totalInclTax / (1 + taxRate / 100));
-                              updateItem(item.id, "discount", Number(Math.max(0, newDiscount).toFixed(2)));
+                            value={
+                              totalDrafts[item.id] ??
+                              toRupees(processed?.total ?? 0).toFixed(2)
+                            }
+                            onChange={(e) => {
+                              setTotalDrafts((prev) => ({
+                                ...prev,
+                                [item.id]: e.target.value,
+                              }));
+                            }}
+                            onBlur={() => {
+                              setTotalDrafts((prev) => {
+                                const next = { ...prev };
+                                delete next[item.id];
+                                return next;
+                              });
                             }}
                             onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                (e.target as HTMLInputElement).blur();
+                              if (e.key !== "Enter") return;
+                              e.preventDefault();
+                              const raw =
+                                totalDrafts[item.id] ??
+                                (e.target as HTMLInputElement).value;
+                              const totalInclTax = Number(raw);
+                              if (
+                                Number.isFinite(totalInclTax) &&
+                                totalInclTax > 0
+                              ) {
+                                commitNegotiatedTotal(
+                                  item,
+                                  totalInclTax,
+                                  toRupees(processed?.total ?? 0),
+                                );
                               }
                             }}
                             className={`${inputCls} border-primary/40 bg-white font-bold text-primary focus:ring-primary/30`}
                           />
+                          {item.quantity <= 0 && (
+                            <p className="text-[9px] text-amber-600 mt-1">Enter qty first</p>
+                          )}
                         </div>
                       </div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div className="px-6 py-4 bg-secondary/10 flex justify-center border-t border-border">
@@ -1122,6 +1616,144 @@ export default function InvoiceForm({
                 </button>
               </div>
             </div>
+
+            {isTaxTemplate && (
+              <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+                <div className="px-6 py-4 border-b border-border bg-secondary/20">
+                  <h3 className="text-xs font-bold text-foreground uppercase tracking-wide">
+                    Reimbursement of Out-of-Pocket Travel Expenses
+                  </h3>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    At actuals — no GST (pure agent). Amounts are added to the invoice grand total.
+                  </p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm min-w-[640px]">
+                    <thead>
+                      <tr className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider border-b border-border bg-secondary/10">
+                        <th className="px-4 py-3 text-left w-12">Sr.</th>
+                        <th className="px-4 py-3 text-left">Particulars</th>
+                        <th className="px-4 py-3 text-left w-44">Ride ID</th>
+                        <th className="px-4 py-3 text-left w-36">Date</th>
+                        <th className="px-4 py-3 text-right w-32">Amount (₹)</th>
+                        <th className="px-2 py-3 w-10" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {reimbursements.length === 0 && (
+                        <tr>
+                          <td
+                            colSpan={6}
+                            className="px-4 py-8 text-center text-xs text-muted-foreground italic"
+                          >
+                            No reimbursement rows yet.
+                          </td>
+                        </tr>
+                      )}
+                      {reimbursements.map((row, index) => (
+                        <tr key={row.id} className="border-b border-border/60">
+                          <td className="px-4 py-3 text-muted-foreground font-medium">
+                            {index + 1}
+                          </td>
+                          <td className="px-4 py-2">
+                            <input
+                              value={row.description}
+                              onChange={(e) =>
+                                updateReimbursement(
+                                  row.id,
+                                  "description",
+                                  e.target.value,
+                                )
+                              }
+                              placeholder="Cab fare: Indirapuram to Delhi Airport T3"
+                              className={inputCls}
+                            />
+                          </td>
+                          <td className="px-4 py-2">
+                            <input
+                              value={row.referenceId}
+                              onChange={(e) =>
+                                updateReimbursement(
+                                  row.id,
+                                  "referenceId",
+                                  e.target.value,
+                                )
+                              }
+                              placeholder="RD17890337881572228"
+                              className={`${inputCls} font-mono text-xs`}
+                            />
+                          </td>
+                          <td className="px-4 py-2">
+                            <input
+                              type="date"
+                              value={row.lineDate}
+                              onChange={(e) =>
+                                updateReimbursement(
+                                  row.id,
+                                  "lineDate",
+                                  e.target.value,
+                                )
+                              }
+                              className={inputCls}
+                            />
+                          </td>
+                          <td className="px-4 py-2">
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={row.amount === 0 ? "" : row.amount}
+                              onChange={(e) =>
+                                updateReimbursement(
+                                  row.id,
+                                  "amount",
+                                  Number(e.target.value) || 0,
+                                )
+                              }
+                              className={`${inputCls} text-right tabular-nums`}
+                            />
+                          </td>
+                          <td className="px-2 py-2">
+                            <button
+                              type="button"
+                              onClick={() => removeReimbursement(row.id)}
+                              className="p-1.5 text-muted-foreground hover:text-destructive rounded-md"
+                              aria-label="Remove reimbursement row"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-secondary/10 font-bold text-sm">
+                        <td colSpan={4} className="px-4 py-3 text-right">
+                          Total Reimbursement
+                        </td>
+                        <td className="px-4 py-3 text-right tabular-nums">
+                          {formatInr(reimbursementTotal, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </td>
+                        <td />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                <div className="px-6 py-4 border-t border-border flex justify-center">
+                  <button
+                    type="button"
+                    onClick={addReimbursement}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-primary hover:bg-primary/10 rounded-xl transition-all"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Reimbursement Row
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Sticky Summary Sidebar */}
@@ -1133,12 +1765,39 @@ export default function InvoiceForm({
               </h3>
 
               <div className="space-y-3 mb-6">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Subtotal</span>
-                  <span className="font-semibold">
-                    ₹{totals.subTotal.toLocaleString("en-IN")}
-                  </span>
-                </div>
+                {isTaxTemplate ? (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Taxable value (services)</span>
+                    <span className="font-semibold">
+                      {formatInr(totals.taxableSubTotal, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Subtotal</span>
+                    <span className="font-semibold">
+                      {formatInr(totals.subTotal, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
+                )}
+
+                {isTaxTemplate && reimbursementTotal > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Add: Reimbursement</span>
+                    <span className="font-semibold">
+                      {formatInr(reimbursementTotal, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
+                )}
 
                 {totals.discountTotal > 0 && (
                   <div className="flex justify-between text-sm text-green-600 font-medium">
@@ -1147,7 +1806,11 @@ export default function InvoiceForm({
                       Total Discount
                     </span>
                     <span>
-                      -₹{totals.discountTotal.toLocaleString("en-IN")}
+                      -
+                      {formatInr(totals.discountTotal, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
                     </span>
                   </div>
                 )}
@@ -1156,7 +1819,10 @@ export default function InvoiceForm({
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">IGST Total</span>
                     <span className="font-semibold">
-                      ₹{totals.igst.toLocaleString("en-IN")}
+                      {formatInr(totals.igst, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
                     </span>
                   </div>
                 ) : (
@@ -1164,38 +1830,64 @@ export default function InvoiceForm({
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">CGST Total</span>
                       <span className="font-semibold">
-                        ₹{totals.cgst.toLocaleString("en-IN")}
+                        {formatInr(totals.cgst, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
                       </span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">SGST Total</span>
                       <span className="font-semibold">
-                        ₹{totals.sgst.toLocaleString("en-IN")}
+                        {formatInr(totals.sgst, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
                       </span>
                     </div>
                   </>
                 )}
 
+                {isTaxTemplate && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Round off</span>
+                    <span className="font-semibold">
+                      {formatInr(roundOff, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
+                )}
+
                 <div className="pt-4 border-t border-border flex justify-between">
                   <span className="text-base font-bold">Total Amount</span>
                   <span className="text-xl font-bold text-primary">
-                    ₹{totals.total.toLocaleString("en-IN")}
+                    {formatInr(
+                      totals.total + (isTaxTemplate ? Number(roundOff) || 0 : 0),
+                      {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      },
+                    )}
                   </span>
                 </div>
               </div>
 
               <div className="space-y-4">
-                <div>
-                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
-                    Additional Notes
-                  </label>
-                  <textarea
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Thank you for your business!"
-                    className={`${inputCls} h-24 resize-none`}
-                  />
-                </div>
+                {!isTaxTemplate && (
+                  <div>
+                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                      Additional Notes
+                    </label>
+                    <textarea
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      placeholder="Thank you for your business!"
+                      className={`${inputCls} h-24 resize-none`}
+                    />
+                  </div>
+                )}
 
                 <button
                   type="submit"

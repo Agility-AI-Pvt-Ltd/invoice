@@ -2,11 +2,17 @@
 
 import { z } from "zod";
 import { prisma } from "@repo/db";
-import { compare } from "bcryptjs";
 import { redirect } from "next/navigation";
 import { cookies, headers } from "next/headers";
 import { checkAuthRateLimit } from "../../../lib/ratelimit";
 import { logger } from "@/lib/logger";
+import { findUserByEmailForLogin } from "@/lib/find-user-by-email";
+import {
+  hashPassword,
+  isBcryptHash,
+  verifyPassword,
+} from "@/lib/password";
+import { databaseFailureMessage } from "@/lib/db-error";
 
 const loginSchema = z.object({
   email: z.string().email({ message: "Invalid email address" }),
@@ -40,7 +46,8 @@ export async function loginUser(
     };
   }
 
-  const { email, password } = validatedFields.data;
+  const email = validatedFields.data.email.trim().toLowerCase();
+  const { password } = validatedFields.data;
 
   const headerStore = await headers();
   const ip =
@@ -55,16 +62,23 @@ export async function loginUser(
   let redirectPath = "/dashboard";
 
   try {
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await findUserByEmailForLogin(email);
 
-    if (!user || !user.password) {
+    if (!user?.password) {
       return { message: "Invalid email or password." };
     }
 
-    const passwordMatch = await compare(password, user.password);
+    const passwordMatch = await verifyPassword(password, user.password);
 
     if (!passwordMatch) {
       return { message: "Invalid email or password." };
+    }
+
+    if (!isBcryptHash(user.password)) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { password: await hashPassword(password) },
+      });
     }
 
     const cookieStore = await cookies();
@@ -81,7 +95,12 @@ export async function loginUser(
     }
   } catch (error) {
     logger.error("auth:login", "Unexpected login failure", error, { email });
-    return { message: "An error occurred during login. Please try again." };
+
+    const message =
+      databaseFailureMessage(error) ??
+      "An error occurred during login. Please try again.";
+
+    return { message };
   }
 
   redirect(redirectPath);

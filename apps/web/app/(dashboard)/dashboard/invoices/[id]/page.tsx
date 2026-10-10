@@ -6,8 +6,30 @@ import {
   ArrowLeft, Pencil, Plus, ArrowUpRight, Clock, CheckCircle2, AlertCircle, TrendingUp, FileText, ChevronRight 
 } from 'lucide-react';
 import InvoiceActions from './InvoiceActions';
+import { formatInr, toRupees } from '@/lib/money';
+import { amountInWordsIndian } from '@/lib/amount-in-words';
 
-const fmt = (n: number | any) => `₹${Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const fmt = (n: number | any) => formatInr(n, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtRs = (n: number | any) =>
+  toRupees(Number(n)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const panFromGstin = (gstin?: string | null) =>
+  gstin && gstin.length >= 12 ? gstin.substring(2, 12).toUpperCase() : null;
+
+function resolvedInvoiceTotal(invoice: {
+  subTotal: number;
+  discountTotal: number;
+  cgstTotal: number;
+  sgstTotal: number;
+  igstTotal: number;
+}) {
+  return (
+    Number(invoice.subTotal ?? 0) -
+    Number(invoice.discountTotal ?? 0) +
+    Number(invoice.cgstTotal ?? 0) +
+    Number(invoice.sgstTotal ?? 0) +
+    Number(invoice.igstTotal ?? 0)
+  );
+}
 
 export default async function InvoiceViewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -30,9 +52,15 @@ export default async function InvoiceViewPage({ params }: { params: Promise<{ id
   
   // If we have explicit tax values, use them. Otherwise, fall back to state-code detection.
   const isInterState = hasIgst ? true : hasCgst ? false : (!!orgState && !!supplyState && orgState !== supplyState);
-  const totalPaid = invoice.payments.reduce((s, p) => s + Number(p.amount), 0);
-  const remaining = Number(invoice.total) - totalPaid;
-  const template = (invoice.organization as any).defaultTemplate || 'modern';
+  const displayTotalPaise = resolvedInvoiceTotal(invoice);
+  const totalPaidPaise = invoice.payments.reduce((s, p) => s + Number(p.amount), 0);
+  const totalPaid = toRupees(totalPaidPaise);
+  const totalInRupees = toRupees(displayTotalPaise);
+  const remaining = totalInRupees - totalPaid;
+  const template =
+    (invoice as any).pdfTemplate ||
+    (invoice.organization as any).defaultTemplate ||
+    'modern';
 
   return (
     <div className="p-8 max-w-5xl mx-auto w-full space-y-8 pb-24 text-foreground">
@@ -61,7 +89,7 @@ export default async function InvoiceViewPage({ params }: { params: Promise<{ id
         <InvoiceActions
           invoiceId={invoice.id}
           status={invoice.status as any}
-          total={Number(invoice.total)}
+          total={totalInRupees}
           paid={totalPaid}
           defaultTemplate={template}
           cancelRemark={invoice.cancelRemark}
@@ -106,7 +134,7 @@ export default async function InvoiceViewPage({ params }: { params: Promise<{ id
               <p className={`text-sm font-bold uppercase tracking-widest ${remaining <= 0 ? "text-green-600" : "text-amber-600"}`}>
                 {remaining <= 0 ? "Fully Paid" : "Partially Paid"}
               </p>
-              <p className="text-muted-foreground text-xs font-medium">₹{totalPaid.toLocaleString('en-IN')} collected so far</p>
+              <p className="text-muted-foreground text-xs font-medium">?{totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} collected so far</p>
             </div>
           </div>
           {remaining > 0 && (
@@ -125,6 +153,7 @@ export default async function InvoiceViewPage({ params }: { params: Promise<{ id
           {template === 'modern' && <ModernTemplate invoice={invoice} isInterState={isInterState} />}
           {template === 'classic' && <ClassicTemplate invoice={invoice} isInterState={isInterState} />}
           {template === 'minimal' && <MinimalTemplate invoice={invoice} isInterState={isInterState} />}
+          {template === 'tax' && <TaxTemplate invoice={invoice} isInterState={isInterState} />}
 
           {/* Payment History (Attached at bottom) */}
           {invoice.payments.length > 0 && (
@@ -163,7 +192,7 @@ export default async function InvoiceViewPage({ params }: { params: Promise<{ id
   );
 }
 
-/* ─── TEMPLATE COMPONENTS ────────────────────────────────────────── */
+/* ??? TEMPLATE COMPONENTS ?????????????????????????????????????????? */
 
 function ModernTemplate({ invoice, isInterState }: any) {
   return (
@@ -294,7 +323,7 @@ function ModernTemplate({ invoice, isInterState }: any) {
           )}
           <div className="pt-4 border-t border-white/10 flex justify-between items-end">
             <span className="text-xs font-black uppercase tracking-[0.2em] text-primary">Grand Total</span>
-            <span className="text-3xl font-black italic">{fmt(invoice.total)}</span>
+            <span className="text-3xl font-black italic">{fmt(resolvedInvoiceTotal(invoice))}</span>
           </div>
         </div>
       </div>
@@ -414,7 +443,7 @@ function ClassicTemplate({ invoice, isInterState }: any) {
           )}
           <div className="flex justify-between bg-slate-900 text-white p-4 rounded-xl items-end mt-6">
             <span className="text-[10px] font-black uppercase tracking-[0.2em]">Amount Due</span>
-            <span className="text-3xl font-black italic">{fmt(invoice.total)}</span>
+            <span className="text-3xl font-black italic">{fmt(resolvedInvoiceTotal(invoice))}</span>
           </div>
         </div>
       </div>
@@ -504,7 +533,9 @@ function MinimalTemplate({ invoice, isInterState }: any) {
         <div className="w-full md:w-80 space-y-4">
           <div className="flex justify-between items-center px-4 py-2 bg-slate-50 rounded-xl">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Taxes</span>
-            <span className="text-sm font-bold text-slate-600">{fmt(Number(invoice.total) - Number(invoice.subTotal))}</span>
+            <span className="text-sm font-bold text-slate-600">
+              {fmt(Number(invoice.cgstTotal) + Number(invoice.sgstTotal) + Number(invoice.igstTotal))}
+            </span>
           </div>
           {Number(invoice.discountTotal) > 0 && (
             <div className="flex justify-between items-center px-4 py-2 bg-green-50 rounded-xl">
@@ -514,9 +545,172 @@ function MinimalTemplate({ invoice, isInterState }: any) {
           )}
           <div className="flex justify-between items-end px-4 py-6">
             <span className="text-xs font-black uppercase tracking-widest text-slate-300">Amount Due</span>
-            <span className="text-5xl font-black tracking-tighter text-slate-900 italic leading-none">{fmt(invoice.total)}</span>
+            <span className="text-5xl font-black tracking-tighter text-slate-900 italic leading-none">{fmt(resolvedInvoiceTotal(invoice))}</span>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function TaxTemplate({ invoice, isInterState }: any) {
+  const taxableItems = invoice.items.filter((item: any) => Number(item.taxRate) > 0);
+  const reimbItems = invoice.items.filter((item: any) => Number(item.taxRate) === 0);
+  const lineItems = taxableItems.length ? taxableItems : invoice.items;
+  const lineBase = (item: any) =>
+    Number(item.quantity) * Number(item.unitPrice) - Number(item.discount || 0);
+  const taxableSubtotal = lineItems.reduce((s: number, item: any) => s + lineBase(item), 0);
+  const reimbTotal = reimbItems.reduce((s: number, item: any) => s + lineBase(item), 0);
+  const totalRupees = toRupees(Number(invoice.total));
+  const org = invoice.organization;
+  const roundOffRupees = toRupees(Number(invoice.roundOff ?? 0));
+
+  return (
+    <div className="p-8 text-[11px] text-black font-serif leading-snug">
+      <div className="border border-black">
+        <h1 className="text-center text-sm font-bold py-2 border-b border-black tracking-wide">TAX INVOICE</h1>
+
+        <div className="grid grid-cols-2 border-b border-black">
+          <div className="p-3 border-r border-black space-y-0.5">
+            <p className="font-bold text-xs uppercase">{org.name}</p>
+            {org.address && <p>{org.address}</p>}
+            {org.gstin && <p>GSTIN: {org.gstin}</p>}
+            {panFromGstin(org.gstin) && <p>PAN: {panFromGstin(org.gstin)}</p>}
+            {org.stateCode && <p>State: {org.stateCode}</p>}
+            {org.website && <p>Email: {org.website}</p>}
+          </div>
+          <div className="p-3 space-y-1">
+            <p><span className="font-bold inline-block w-32">Invoice No:</span>{invoice.invoiceNumber}</p>
+            <p><span className="font-bold inline-block w-32">Invoice Date:</span>{new Date(invoice.issueDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-')}</p>
+            {(invoice.invoiceRemarks || invoice.notes) && (
+              <p><span className="font-bold inline-block w-32 align-top">Remarks:</span><span className="inline-block max-w-60">{invoice.invoiceRemarks || invoice.notes}</span></p>
+            )}
+            <p><span className="font-bold inline-block w-32">Place of Supply:</span>{invoice.placeOfSupply || invoice.customer.stateCode}</p>
+            <p><span className="font-bold inline-block w-32">Reverse Charge:</span>{invoice.reverseCharge ? 'Yes' : 'No'}</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 border-b border-black">
+          <div className="p-3 border-r border-black">
+            <p className="font-bold mb-1">Billed To:</p>
+            <p className="font-bold">{invoice.customer.name}</p>
+            <p>{invoice.billingAddress || invoice.customer.address}</p>
+            {invoice.customer.gstin && <p>GSTIN: {invoice.customer.gstin}</p>}
+            {invoice.customer.stateCode && <p>State: {invoice.customer.stateCode}</p>}
+            {invoice.customerDetails && <p>Attention: {invoice.customerDetails}</p>}
+          </div>
+          <div className="p-3" />
+        </div>
+
+        <div className="bg-neutral-200 border-b border-black px-2 py-1 font-bold text-[10px]">Professional Fees (Taxable)</div>
+        <table className="w-full text-[10px] border-collapse">
+          <thead>
+            <tr className="bg-neutral-100 border-b border-black">
+              <th className="p-1 w-8 text-center border-r border-neutral-300">Sr.</th>
+              <th className="p-1 text-left border-r border-neutral-300">Particulars</th>
+              <th className="p-1 w-20 text-center border-r border-neutral-300">SAC</th>
+              <th className="p-1 w-16 text-center border-r border-neutral-300">Days</th>
+              <th className="p-1 w-24 text-right border-r border-neutral-300">Per Day</th>
+              <th className="p-1 w-28 text-right">Total (Rs.)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lineItems.map((item: any, i: number) => (
+              <tr key={item.id} className="border-b border-neutral-200">
+                <td className="p-2 text-center align-top">{i + 1}</td>
+                <td className="p-2 align-top">{item.description}</td>
+                <td className="p-2 text-center align-top">{item.hsnCode || '—'}</td>
+                <td className="p-2 text-center align-top">{Number(item.quantity)}</td>
+                <td className="p-2 text-right align-top">{fmtRs(item.unitPrice)}</td>
+                <td className="p-2 text-right align-top">{fmtRs(lineBase(item))}</td>
+              </tr>
+            ))}
+            <tr className="font-bold border-t border-black">
+              <td colSpan={5} className="p-2 text-right">Total Professional Fees (Taxable Value)</td>
+              <td className="p-2 text-right">{fmtRs(taxableSubtotal || invoice.subTotal)}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        {reimbItems.length > 0 && (
+          <>
+            <div className="bg-neutral-200 border-y border-black px-2 py-1 font-bold text-[10px]">
+              Reimbursement of Out-of-Pocket Expenses (At Actuals — No GST)
+            </div>
+            <table className="w-full text-[10px] border-collapse">
+              <thead>
+                <tr className="bg-neutral-100 border-b border-black">
+                  <th className="p-1 w-8 text-center">Sr.</th>
+                  <th className="p-1 text-left">Particulars</th>
+                  <th className="p-1 w-24 text-center">Ride ID</th>
+                  <th className="p-1 w-20 text-center">Date</th>
+                  <th className="p-1 w-28 text-right">Amount (Rs.)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reimbItems.map((item: any, i: number) => (
+                  <tr key={item.id} className="border-b border-neutral-200">
+                    <td className="p-2 text-center">{i + 1}</td>
+                    <td className="p-2">{item.description}</td>
+                    <td className="p-2 text-center">{item.referenceId || item.hsnCode || '—'}</td>
+                    <td className="p-2 text-center">{item.lineDate ? new Date(item.lineDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-') : '—'}</td>
+                    <td className="p-2 text-right">{fmtRs(lineBase(item))}</td>
+                  </tr>
+                ))}
+                <tr className="font-bold border-t border-black">
+                  <td colSpan={4} className="p-2 text-right">Total Reimbursement</td>
+                  <td className="p-2 text-right">{fmtRs(reimbTotal)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </>
+        )}
+
+        <div className="grid grid-cols-[58%_42%] border-t border-black">
+          <div className="p-3 border-r border-black space-y-1">
+            <p className="font-bold">Bank Account Details</p>
+            <p>Account Name: {org.name}</p>
+            {org.bankName && <p>Bank Name: {org.bankName}</p>}
+            {org.bankAccount && <p>A/c No: {org.bankAccount}</p>}
+            {org.bankIfsc && <p>IFSC: {org.bankIfsc}</p>}
+            {org.bankAccountType && <p>Account Type: {org.bankAccountType}</p>}
+            <p className="pt-2">Payment Mode: {invoice.paymentMode || 'Bank Transfer (NEFT / RTGS) to the account above.'}</p>
+            <p className="pt-2 font-bold">Amount (In Words): {amountInWordsIndian(totalRupees)}</p>
+            {invoice.invoiceTerms && <p className="pt-2 text-[10px]">TERMS: {invoice.invoiceTerms}</p>}
+          </div>
+          <div className="p-3 space-y-1">
+            <div className="flex justify-between"><span>Taxable Value</span><span>{fmtRs(invoice.subTotal)}</span></div>
+            {isInterState ? (
+              <div className="flex justify-between"><span>IGST</span><span>{fmtRs(invoice.igstTotal)}</span></div>
+            ) : (
+              <>
+                <div className="flex justify-between"><span>CGST</span><span>{fmtRs(invoice.cgstTotal)}</span></div>
+                <div className="flex justify-between"><span>SGST</span><span>{fmtRs(invoice.sgstTotal)}</span></div>
+              </>
+            )}
+            <div className="flex justify-between border-t border-neutral-400 pt-1 font-bold">
+              <span>Subtotal</span>
+              <span>{fmtRs(Number(invoice.subTotal) + Number(invoice.cgstTotal) + Number(invoice.sgstTotal) + Number(invoice.igstTotal))}</span>
+            </div>
+            {reimbTotal > 0 && (
+              <div className="flex justify-between"><span>Add: Reimbursement</span><span>{fmtRs(reimbTotal)}</span></div>
+            )}
+            <div className="flex justify-between"><span>Round Off</span><span>{fmtRs(roundOffRupees)}</span></div>
+            <div className="flex justify-between font-bold text-xs pt-2">
+              <span>Grand Total</span>
+              <span>{fmtRs(totalRupees)}</span>
+            </div>
+            <div className="pt-8 text-right">
+              <p className="font-bold">For {org.name}</p>
+              <p className="mt-10 text-[10px]">Authorised Signatory</p>
+            </div>
+          </div>
+        </div>
+
+        <p className="text-[9px] italic p-2 border-t border-black leading-relaxed">
+          Declaration: We declare that this invoice shows the actual price of the services described and that all
+          particulars are true and correct. This is a computer-generated invoice.
+        </p>
       </div>
     </div>
   );
@@ -525,11 +719,12 @@ function MinimalTemplate({ invoice, isInterState }: any) {
 function TaxBreakdownSection({ items, isInterState }: { items: any[]; isInterState: boolean }) {
   const summary = items.reduce((acc: any, item: any) => {
     const rate = Number(item.taxRate) || 0;
-    const base = Number(item.quantity) * Number(item.unitPrice);
-    const tax = (base * rate) / 100;
-    if (!acc[rate]) acc[rate] = { rate, taxable: 0, tax: 0 };
-    acc[rate].taxable += base;
-    acc[rate].tax += tax;
+    const taxable = Number(item.quantity) * Number(item.unitPrice) - Number(item.discount || 0);
+    if (!acc[rate]) acc[rate] = { rate, taxable: 0, cgst: 0, sgst: 0, igst: 0 };
+    acc[rate].taxable += taxable;
+    acc[rate].cgst += Number(item.cgstAmount || 0);
+    acc[rate].sgst += Number(item.sgstAmount || 0);
+    acc[rate].igst += Number(item.igstAmount || 0);
     return acc;
   }, {});
 
@@ -559,11 +754,11 @@ function TaxBreakdownSection({ items, isInterState }: { items: any[]; isInterSta
               <td className="py-2.5">{r.rate}%</td>
               <td className="py-2.5 text-right font-semibold text-slate-800">{fmt(r.taxable)}</td>
               {isInterState ? (
-                <td className="py-2.5 text-right font-black text-slate-900">{fmt(r.tax)}</td>
+                <td className="py-2.5 text-right font-black text-slate-900">{fmt(r.igst)}</td>
               ) : (
                 <>
-                  <td className="py-2.5 text-right font-black text-slate-900">{fmt(r.tax / 2)}</td>
-                  <td className="py-2.5 text-right font-black text-slate-900">{fmt(r.tax / 2)}</td>
+                  <td className="py-2.5 text-right font-black text-slate-900">{fmt(r.cgst)}</td>
+                  <td className="py-2.5 text-right font-black text-slate-900">{fmt(r.sgst)}</td>
                 </>
               )}
             </tr>

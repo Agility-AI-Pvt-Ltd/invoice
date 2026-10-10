@@ -57,7 +57,7 @@ export async function applyInventoryOnFullPayment(
 
     const qty = new Prisma.Decimal(line.quantity);
 
-    const invRow = await tx.inventoryItem.findUnique({
+    let invRow = await tx.inventoryItem.findUnique({
       where: {
         warehouseId_productId: {
           warehouseId: warehouse.id,
@@ -65,18 +65,21 @@ export async function applyInventoryOnFullPayment(
         },
       },
     });
+    // Auto-create a stock row at 0 on-hand if it doesn't exist yet,
+    // so payment recording isn't permanently blocked by a missing setup row.
     if (!invRow) {
-      throw new Error(
-        `INSUFFICIENT_STOCK_SETUP: No stock row for product "${line.description}". Open Inventory and add stock for this SKU.`
-      );
+      invRow = await tx.inventoryItem.create({
+        data: {
+          warehouseId: warehouse.id,
+          productId: line.productId,
+          quantityOnHand: new Prisma.Decimal(0),
+        },
+      });
     }
 
     const nextQty = invRow.quantityOnHand.minus(qty);
-    if (nextQty.lt(0)) {
-      throw new Error(
-        `INSUFFICIENT_STOCK: Not enough stock for "${line.description}" (requested ${line.quantity}).`
-      );
-    }
+    // Allow negative stock (oversell) — inventory will show a deficit.
+    // Payments are never blocked by stock levels; stock is informational.
 
     await tx.inventoryItem.update({
       where: { id: invRow.id },

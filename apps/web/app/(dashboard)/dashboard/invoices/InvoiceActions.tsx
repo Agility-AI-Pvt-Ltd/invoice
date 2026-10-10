@@ -11,8 +11,7 @@ import {
   Loader2,
   X,
   XCircle,
-  Trash2,
-  Activity
+  Trash2
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -37,7 +36,6 @@ export function InvoiceActions({
   const [purgeAccepted, setPurgeAccepted] = useState(false);
   const [purgeNumberInput, setPurgeNumberInput] = useState("");
   const [purgeError, setPurgeError] = useState("");
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
@@ -128,34 +126,6 @@ export function InvoiceActions({
       setPurgeError("Something went wrong");
     } finally {
       setIsPurging(false);
-      setIsOpen(false);
-    }
-  };
-
-  const submitAnalyze = async () => {
-    setIsAnalyzing(true);
-    try {
-      const res = await fetch(`/api/analytics/analyze`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ invoiceId }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.is_anomaly) {
-          alert(`Anomaly detected: ${data.reason}`);
-        } else {
-          alert("No anomaly detected.");
-        }
-        router.refresh();
-      } else {
-        const data = await res.json();
-        alert(data.error || "Analysis failed");
-      }
-    } catch {
-      alert("Something went wrong");
-    } finally {
-      setIsAnalyzing(false);
       setIsOpen(false);
     }
   };
@@ -400,16 +370,6 @@ export function InvoiceActions({
               <Download className="w-4 h-4" />
               Download PDF
             </a>
-
-            <button
-              type="button"
-              onClick={submitAnalyze}
-              disabled={isAnalyzing}
-              className="w-full flex items-center gap-2 px-4 py-2 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
-            >
-              {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Activity className="w-4 h-4" />}
-              Analyze for Anomaly
-            </button>
 
             <div className="h-px bg-border my-1" />
 

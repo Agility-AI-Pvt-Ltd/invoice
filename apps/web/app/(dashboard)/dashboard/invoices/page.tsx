@@ -1,18 +1,66 @@
-import { requireAuth } from '../../../../lib/auth';
+import { requireAuth, getOrgOrThrow } from '../../../../lib/auth';
 import { prisma } from '@repo/db';
 import Link from 'next/link';
 import { 
   FileText, 
   Plus, 
   Search, 
-  Filter, 
   ArrowUpRight,
-  MoreHorizontal,
-  Mail,
-  Download
+  ChevronLeft,
+  ChevronRight,
+  X,
 } from 'lucide-react';
 import { InvoiceActions } from './InvoiceActions';
 import { InvoiceAgingChart } from './_components/InvoiceAgingChart';
+import { formatInr, toRupees } from '@/lib/money';
+
+export const dynamic = 'force-dynamic';
+
+const DEFAULT_PAGE_SIZE = 20;
+const PAGE_SIZE_OPTIONS = [20, 50, 100] as const;
+
+const SORT_OPTIONS = {
+  'date-desc': { issueDate: 'desc' as const },
+  'date-asc': { issueDate: 'asc' as const },
+  'price-desc': { total: 'desc' as const },
+  'price-asc': { total: 'asc' as const },
+};
+
+type SortOption = keyof typeof SORT_OPTIONS;
+const DEFAULT_SORT: SortOption = 'date-desc';
+
+function parseFilterDateStart(date: string) {
+  return new Date(`${date}T00:00:00.000+05:30`);
+}
+
+function parseFilterDateEnd(date: string) {
+  return new Date(`${date}T23:59:59.999+05:30`);
+}
+
+function buildInvoicesQuery(params: {
+  q?: string;
+  status?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  sort?: string;
+  pageSize?: string;
+  page?: number;
+}) {
+  const search = new URLSearchParams();
+  if (params.q) search.set('q', params.q);
+  if (params.status) search.set('status', params.status);
+  if (params.dateFrom) search.set('dateFrom', params.dateFrom);
+  if (params.dateTo) search.set('dateTo', params.dateTo);
+  if (params.sort && params.sort !== DEFAULT_SORT) search.set('sort', params.sort);
+  if (params.pageSize && params.pageSize !== String(DEFAULT_PAGE_SIZE)) search.set('pageSize', params.pageSize);
+  if (params.page && params.page > 1) search.set('page', String(params.page));
+  const qs = search.toString();
+  return qs ? `?${qs}` : '';
+}
+
+function hasActiveFilters(params: { q?: string; status?: string; dateFrom?: string; dateTo?: string }) {
+  return Boolean(params.q || params.status || params.dateFrom || params.dateTo);
+}
 
 const STATUS_STYLES: Record<string, string> = {
   DRAFT: "bg-secondary text-muted-foreground border-border",
@@ -23,31 +71,90 @@ const STATUS_STYLES: Record<string, string> = {
   CANCELLED: "bg-muted text-muted-foreground border-border opacity-60",
 };
 
+function resolvedInvoiceTotal(invoice: {
+  subTotal: number;
+  discountTotal: number;
+  cgstTotal: number;
+  sgstTotal: number;
+  igstTotal: number;
+}) {
+  return (
+    Number(invoice.subTotal ?? 0) -
+    Number(invoice.discountTotal ?? 0) +
+    Number(invoice.cgstTotal ?? 0) +
+    Number(invoice.sgstTotal ?? 0) +
+    Number(invoice.igstTotal ?? 0)
+  );
+}
+
 export default async function InvoicesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; page?: string; dateFrom?: string; dateTo?: string; sort?: string; pageSize?: string }>;
 }) {
-  const { q, status } = await searchParams;
+  const { q, status, page: pageParam, dateFrom, dateTo, sort: sortParam, pageSize: pageSizeParam } = await searchParams;
+  const sort = (sortParam && sortParam in SORT_OPTIONS ? sortParam : DEFAULT_SORT) as SortOption;
+  const showAll = pageSizeParam === 'all';
+  const pageSize = showAll
+    ? Number.MAX_SAFE_INTEGER
+    : PAGE_SIZE_OPTIONS.includes(Number(pageSizeParam) as (typeof PAGE_SIZE_OPTIONS)[number])
+      ? Number(pageSizeParam)
+      : DEFAULT_PAGE_SIZE;
+  const currentPage = Math.max(1, Number(pageParam) || 1);
   const user = await requireAuth();
-  const organizationId = user.ownedOrgs[0]?.id;
+  const organizationId = getOrgOrThrow(user).id;
+  const filtersActive = hasActiveFilters({ q, status, dateFrom, dateTo });
+
+  const where = {
+    organizationId,
+    AND: [
+      q ? {
+        OR: [
+          { invoiceNumber: { contains: q, mode: 'insensitive' as const } },
+          { customer: { name: { contains: q, mode: 'insensitive' as const } } },
+        ]
+      } : {},
+      status ? { status: status as any } : {},
+      dateFrom || dateTo ? {
+        issueDate: {
+          ...(dateFrom ? { gte: parseFilterDateStart(dateFrom) } : {}),
+          ...(dateTo ? { lte: parseFilterDateEnd(dateTo) } : {}),
+        },
+      } : {},
+    ],
+  };
+
+  const [totalCount, totalUnfiltered] = await Promise.all([
+    prisma.invoice.count({ where }),
+    filtersActive
+      ? prisma.invoice.count({ where: { organizationId } })
+      : Promise.resolve(null),
+  ]);
+
+  const totalPages = showAll ? 1 : Math.max(1, Math.ceil(totalCount / pageSize));
+  const page = Math.min(currentPage, totalPages);
 
   const invoices = await prisma.invoice.findMany({
-    where: { 
-      organizationId,
-      AND: [
-        q ? {
-          OR: [
-            { invoiceNumber: { contains: q, mode: 'insensitive' } },
-            { customer: { name: { contains: q, mode: 'insensitive' } } },
-          ]
-        } : {},
-        status ? { status: status as any } : {},
-      ]
-    },
-    orderBy: { createdAt: 'desc' },
+    where,
+    orderBy: SORT_OPTIONS[sort],
     include: { customer: true },
+    ...(showAll
+      ? {}
+      : {
+          skip: (page - 1) * pageSize,
+          take: pageSize,
+        }),
   });
+  const showingFrom = totalCount === 0 ? 0 : showAll ? 1 : (page - 1) * pageSize + 1;
+  const showingTo = showAll ? totalCount : Math.min(page * pageSize, totalCount);
+  const queryBase = {
+    q,
+    status,
+    dateFrom,
+    dateTo,
+    sort,
+    pageSize: showAll ? 'all' : (pageSizeParam ?? String(DEFAULT_PAGE_SIZE)),
+  };
 
   // ── Invoice Aging data ──
   const now = new Date();
@@ -67,7 +174,7 @@ export default async function InvoicesPage({
 
   for (const inv of unpaidInvoices) {
     const daysOverdue = Math.max(0, Math.floor((now.getTime() - new Date(inv.dueDate).getTime()) / (1000 * 60 * 60 * 24)));
-    const total = Number(inv.total);
+    const total = toRupees(inv.total);
     if (daysOverdue <= 30) {
       agingBuckets[0]!.count++;
       agingBuckets[0]!.amount += total;
@@ -101,9 +208,25 @@ export default async function InvoicesPage({
       {/* Invoice Aging Chart */}
       <InvoiceAgingChart buckets={agingBuckets} />
 
+      {filtersActive && totalUnfiltered !== null && totalCount < totalUnfiltered && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3">
+          <p className="text-sm text-foreground">
+            Showing <span className="font-bold">{totalCount}</span> filtered invoice{totalCount === 1 ? '' : 's'}.
+            Your account has <span className="font-bold">{totalUnfiltered}</span> invoices in total.
+          </p>
+          <Link
+            href={`/dashboard/invoices${buildInvoicesQuery({ sort, pageSize: pageSizeParam })}`}
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-primary hover:underline shrink-0"
+          >
+            <X className="w-3.5 h-3.5" />
+            Show all invoices
+          </Link>
+        </div>
+      )}
+
       {/* Toolbar */}
-      <form method="GET" className="flex flex-col md:flex-row gap-4 items-center justify-between">
-        <div className="relative w-full md:w-96 group">
+      <form method="GET" className="space-y-4">
+        <div className="relative w-full md:max-w-md group">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
           <input 
             name="q"
@@ -112,24 +235,88 @@ export default async function InvoicesPage({
             className="w-full bg-card border border-border rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
           />
         </div>
-        <div className="flex items-center gap-2 w-full md:w-auto">
-          <select 
-            name="status"
-            defaultValue={status}
-            className="flex-1 md:flex-none bg-card border border-border rounded-xl px-4 py-2.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary/20"
-          >
-            <option value="">All Statuses</option>
-            <option value="DRAFT">Draft</option>
-            <option value="SENT">Sent</option>
-            <option value="PAID">Paid</option>
-            <option value="OVERDUE">Overdue</option>
-          </select>
-          <button type="submit" className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold hover:opacity-90 transition-all">
-            Filter
-          </button>
-          <Link href="/dashboard/invoices" className="p-2.5 bg-secondary border border-border rounded-xl text-xs font-bold hover:bg-border transition-all">
-            Reset
-          </Link>
+        <div className="flex flex-col lg:flex-row gap-3 lg:items-end">
+          <div className="flex flex-col gap-1">
+            <label htmlFor="status" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-1">
+              Status
+            </label>
+            <select 
+              id="status"
+              name="status"
+              defaultValue={status}
+              className="bg-card border border-border rounded-xl px-4 py-2.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary/20"
+            >
+              <option value="">All Statuses</option>
+              <option value="DRAFT">Draft</option>
+              <option value="SENT">Sent</option>
+              <option value="PAID">Paid</option>
+              <option value="OVERDUE">Overdue</option>
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="dateFrom" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-1">
+              Issue Date From
+            </label>
+            <input
+              id="dateFrom"
+              type="date"
+              name="dateFrom"
+              defaultValue={dateFrom}
+              className="bg-card border border-border rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="dateTo" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-1">
+              Issue Date To
+            </label>
+            <input
+              id="dateTo"
+              type="date"
+              name="dateTo"
+              defaultValue={dateTo}
+              className="bg-card border border-border rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="sort" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-1">
+              Sort By
+            </label>
+            <select
+              id="sort"
+              name="sort"
+              defaultValue={sort}
+              className="bg-card border border-border rounded-xl px-4 py-2.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary/20"
+            >
+              <option value="date-desc">Date: Newest First</option>
+              <option value="date-asc">Date: Oldest First</option>
+              <option value="price-desc">Price: High to Low</option>
+              <option value="price-asc">Price: Low to High</option>
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="pageSize" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-1">
+              Per Page
+            </label>
+            <select
+              id="pageSize"
+              name="pageSize"
+              defaultValue={showAll ? 'all' : String(pageSize)}
+              className="bg-card border border-border rounded-xl px-4 py-2.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary/20"
+            >
+              <option value="20">20</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+              <option value="all">All</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="submit" className="flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold hover:opacity-90 transition-all">
+              Filter
+            </button>
+            <Link href="/dashboard/invoices" className="px-4 py-2.5 bg-secondary border border-border rounded-xl text-xs font-bold hover:bg-border transition-all">
+              Reset
+            </Link>
+          </div>
         </div>
       </form>
 
@@ -186,7 +373,7 @@ export default async function InvoicesPage({
                     <span className="text-muted-foreground font-medium">{new Date(inv.issueDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
                   </td>
                   <td className="px-6 py-5">
-                    <span className="font-bold text-foreground">₹{Number(inv.total).toLocaleString('en-IN')}</span>
+                    <span className="font-bold text-foreground">{formatInr(resolvedInvoiceTotal(inv))}</span>
                   </td>
                   <td className="px-6 py-5 text-center">
                     <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${STATUS_STYLES[inv.status] || STATUS_STYLES.DRAFT}`}>
@@ -215,10 +402,50 @@ export default async function InvoicesPage({
         </div>
       </div>
       
-      {/* Footer Info */}
-      <div className="flex items-center justify-between text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em] px-2">
-        <p>{invoices.length} Invoices Recorded</p>
-        <p>Sorted by Recent</p>
+      {/* Pagination */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-2">
+        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em]">
+          {totalCount === 0
+            ? 'No invoices found'
+            : showAll
+              ? `Showing all ${totalCount} invoice${totalCount === 1 ? '' : 's'}`
+              : `Showing ${showingFrom}–${showingTo} of ${totalCount}`}
+        </p>
+        {!showAll && totalPages > 1 && (
+          <div className="flex items-center gap-2">
+            {page > 1 ? (
+              <Link
+                href={`/dashboard/invoices${buildInvoicesQuery({ ...queryBase, page: page - 1 })}`}
+                className="flex items-center gap-1 px-3 py-2 bg-card border border-border rounded-xl text-xs font-bold hover:bg-secondary transition-all"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Previous
+              </Link>
+            ) : (
+              <span className="flex items-center gap-1 px-3 py-2 bg-secondary/50 border border-border rounded-xl text-xs font-bold text-muted-foreground/50 cursor-not-allowed">
+                <ChevronLeft className="w-4 h-4" />
+                Previous
+              </span>
+            )}
+            <span className="px-3 py-2 text-xs font-bold text-muted-foreground">
+              Page {page} of {totalPages}
+            </span>
+            {page < totalPages ? (
+              <Link
+                href={`/dashboard/invoices${buildInvoicesQuery({ ...queryBase, page: page + 1 })}`}
+                className="flex items-center gap-1 px-3 py-2 bg-card border border-border rounded-xl text-xs font-bold hover:bg-secondary transition-all"
+              >
+                Next
+                <ChevronRight className="w-4 h-4" />
+              </Link>
+            ) : (
+              <span className="flex items-center gap-1 px-3 py-2 bg-secondary/50 border border-border rounded-xl text-xs font-bold text-muted-foreground/50 cursor-not-allowed">
+                Next
+                <ChevronRight className="w-4 h-4" />
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -11,6 +11,7 @@ import {
   verifyOrgAccess,
   logApiAction,
 } from "@/lib/api-utils";
+import { toStoredAmount } from "@/lib/money";
 
 function formatStockError(message: string) {
   const m = message.trim();
@@ -57,7 +58,8 @@ export async function POST(
       return NextResponse.json({ error: validation.error }, { status: 400 });
     }
 
-    const { amount, method, notes } = validation.data;
+    const { amount: rawAmount, method, notes } = validation.data;
+    const amount = toStoredAmount(rawAmount);
 
     const result = await prisma.$transaction(async (tx) => {
       const invoice = await tx.invoice.findUnique({
@@ -70,24 +72,23 @@ export async function POST(
         throw new Error(`INVOICE_${invoice.status}`);
       }
 
-      const alreadyPaidDec = invoice.payments.reduce(
-        (sum, p) => sum.plus(new Prisma.Decimal(p.amount as any)),
-        new Prisma.Decimal(0)
+      const alreadyPaid = invoice.payments.reduce(
+        (sum, p) => sum + (p.amount as unknown as number),
+        0
       );
-      const remainingDec = new Prisma.Decimal(invoice.total as any).minus(alreadyPaidDec);
-      const amountDec = new Prisma.Decimal(amount);
+      const remaining = (invoice.total as unknown as number) - alreadyPaid;
 
-      // Check for overpayment with 0.01 rupee tolerance
-      const TOLERANCE = new Prisma.Decimal("0.01");
-      if (amountDec.greaterThan(remainingDec.plus(TOLERANCE))) {
+      // Check for overpayment with 1 paisa/cent tolerance
+      const TOLERANCE = 1;
+      if (amount > remaining + TOLERANCE) {
         throw new Error("OVERPAID");
       }
 
-      const totalPaidDec = alreadyPaidDec.plus(amountDec);
+      const totalPaid = alreadyPaid + amount;
       const newStatus =
-        totalPaidDec.greaterThanOrEqualTo(new Prisma.Decimal(invoice.total as any).minus(TOLERANCE))
+        totalPaid >= (invoice.total as unknown as number) - TOLERANCE
           ? "PAID"
-          : totalPaidDec.greaterThan(0)
+          : totalPaid > 0
             ? "PARTIALLY_PAID"
             : invoice.status;
 
@@ -126,7 +127,7 @@ export async function POST(
       });
 
       return { newStatus, paymentId: payment.id };
-    });
+    }, { timeout: 30000 });
 
     return NextResponse.json({ success: true, newStatus: result.newStatus, paymentId: result.paymentId });
   } catch (err: any) {

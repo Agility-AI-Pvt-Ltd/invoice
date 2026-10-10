@@ -7,6 +7,7 @@ import { logger } from "@/lib/logger";
 import { stateCodeSchema } from "@repo/domain";
 import { getSessionOrThrow, getOrgOrThrow } from "@/lib/auth";
 import { enforceRateLimit, apiRateLimit } from "@/lib/ratelimit-api";
+import { toStoredAmount } from "@/lib/money";
 
 // GET /api/invoices/[id]
 export async function GET(
@@ -59,6 +60,13 @@ export async function PUT(
       shippingAddress,
       shippingName,
       customerDetails,
+      template,
+      invoiceRemarks,
+      invoiceTerms,
+      paymentMode,
+      roundOff,
+      reverseCharge,
+      bankDetails,
     } = body;
 
     // 1. Validation
@@ -141,6 +149,19 @@ export async function PUT(
         : (!!orgState && !!supplyState && orgState !== supplyState);
 
       const totals = computeInvoiceTotals(items, isInterState);
+      const roundOffStored = toStoredAmount(Number(roundOff) || 0);
+
+      if (bankDetails && typeof bankDetails === "object") {
+        await tx.organization.update({
+          where: { id: organization.id },
+          data: {
+            bankName: bankDetails.bankName?.trim() || null,
+            bankAccount: bankDetails.bankAccount?.trim() || null,
+            bankIfsc: bankDetails.bankIfsc?.trim() || null,
+            bankAccountType: bankDetails.bankAccountType?.trim() || null,
+          },
+        });
+      }
 
       // 2c. Sync Invoice Items
       await tx.invoiceItem.deleteMany({ where: { invoiceId: id } });
@@ -166,11 +187,17 @@ export async function PUT(
           sgstTotal: totals.sgstTotal,
           igstTotal: totals.igstTotal,
           discountTotal: totals.discountTotal,
-          total: totals.grandTotal,
+          total: totals.grandTotal + roundOffStored,
           billingAddress,
           shippingAddress,
           shippingName,
           customerDetails,
+          invoiceRemarks: invoiceRemarks?.trim() || null,
+          invoiceTerms: invoiceTerms?.trim() || null,
+          paymentMode: paymentMode?.trim() || null,
+          roundOff: roundOffStored,
+          reverseCharge: Boolean(reverseCharge),
+          pdfTemplate: template === "tax" ? "tax" : template || null,
           items: { create: itemCreates },
         },
         include: { items: true, customer: true },

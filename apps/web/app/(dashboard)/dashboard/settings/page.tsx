@@ -130,6 +130,7 @@ export default async function SettingsPage({
         bankName: (fd.get("bankName") as string) || null,
         bankAccount: (fd.get("bankAccount") as string) || null,
         bankIfsc: (fd.get("bankIfsc") as string) || null,
+        bankAccountType: (fd.get("bankAccountType") as string) || null,
         defaultTemplate: (fd.get("defaultTemplate") as string) || "modern",
         invoicePrefix: (fd.get("invoicePrefix") as string) || "INV",
         defaultDueDays: parseInt(fd.get("defaultDueDays") as string) || 30,
@@ -344,6 +345,14 @@ export default async function SettingsPage({
                       className={inputCls}
                     />
                   </Field>
+                  <Field label="Account Type">
+                    <input
+                      name="bankAccountType"
+                      defaultValue={org.bankAccountType || ""}
+                      placeholder="Startup Current Account"
+                      className={inputCls}
+                    />
+                  </Field>
                 </div>
               </div>
 
@@ -377,6 +386,7 @@ export default async function SettingsPage({
                       <option value="modern">Modern (Dark Header)</option>
                       <option value="classic">Classic (Traditional)</option>
                       <option value="minimal">Minimal (Clean)</option>
+                      <option value="tax">Tax Invoice (Formal GST)</option>
                     </select>
                   </Field>
                 </div>

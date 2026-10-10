@@ -102,11 +102,13 @@ export function IncomeExpenseChart({ data }: { data: IncomeExpenseChartDatum[] }
             tickLine={false}
           />
           <YAxis
-            tickFormatter={(v) =>
-              typeof v === "number" && Math.abs(v) >= 1000
-                ? `₹${Math.round(v / 1000)}k`
-                : String(v)
-            }
+            tickFormatter={(v) => {
+              if (typeof v !== "number") return String(v);
+              const inRupees = v / 100;
+              return Math.abs(inRupees) >= 1000
+                ? `₹${Math.round(inRupees / 1000)}k`
+                : `₹${inRupees}`;
+            }}
             tick={{ fill: "var(--muted-foreground)", fontSize: 10, fontWeight: 500 }}
             axisLine={false}
             tickLine={false}

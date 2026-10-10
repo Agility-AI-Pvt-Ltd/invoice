@@ -22,7 +22,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
       </p>
       <div className="flex items-center gap-2">
         <span className="h-2 w-2 rounded-full bg-emerald-500" />
-        <span className="text-xs text-muted-foreground">Revenue</span>
+        <span className="text-xs text-muted-foreground">Total Revenue</span>
         <span className="text-xs font-bold text-foreground tabular-nums ml-auto">
           ₹{revenue.toLocaleString("en-IN")}
         </span>

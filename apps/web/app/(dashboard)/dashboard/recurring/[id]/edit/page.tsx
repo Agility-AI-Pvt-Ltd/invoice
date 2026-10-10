@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { redirect } from "next/navigation";
 import EditRecurringForm from "./EditRecurringForm";
+import { toRupees } from "@/lib/money";
 
 export default async function EditRecurringPage({
   params,
@@ -65,8 +66,8 @@ export default async function EditRecurringPage({
       id: item.id,
       description: item.description,
       hsnCode: item.hsnCode,
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
+      quantity: Number(item.quantity),
+      unitPrice: toRupees(item.unitPrice),
       taxRate: Number(item.taxRate),
     })),
   };

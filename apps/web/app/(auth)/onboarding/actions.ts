@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "@repo/db";
 import { redirect } from "next/navigation";
 import { getSession } from "../../../lib/auth";
+import { logger } from "@/lib/logger";
 
 const onboardingSchema = z.object({
   companyName: z
@@ -77,23 +78,27 @@ export async function onboardUser(
       "-" +
       Math.random().toString(36).substring(2, 6);
 
-    await prisma.$transaction([
-      prisma.organization.create({
-        data: {
-          name: companyName,
-          slug,
-          gstin,
-          stateCode,
-          address,
-          ownerId: user.id,
-        },
-      }),
-      prisma.user.update({
-        where: { id: user.id },
-        data: { isOnboarded: true },
-      }),
-    ]);
-  } catch {
+    // Sequential writes (not $transaction): Neon PgBouncer pooler in transaction
+    // mode often breaks multi-statement Prisma transactions on EC2/Docker.
+    await prisma.organization.create({
+      data: {
+        name: companyName,
+        slug,
+        gstin,
+        stateCode,
+        address,
+        ownerId: user.id,
+      },
+    });
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { isOnboarded: true },
+    });
+  } catch (error) {
+    logger.error("auth:onboarding", "Onboarding failed", error, {
+      userId: user.id,
+      companyName,
+    });
     return {
       message: "An error occurred during onboarding. Please try again.",
     };

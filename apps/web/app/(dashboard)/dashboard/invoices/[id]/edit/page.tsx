@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import InvoiceForm from '../../new/InvoiceForm';
+import { toRupees } from '@/lib/money';
 
 export default async function EditInvoicePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -24,7 +25,11 @@ export default async function EditInvoicePage({ params }: { params: Promise<{ id
       where: { organizationId },
       select: { id: true, name: true, price: true, hsnCode: true, taxRate: true, productKind: true },
       orderBy: { name: 'asc' },
-    }),
+    }).then(products => products.map(p => ({
+      ...p,
+      price: toRupees(p.price),
+      taxRate: p.taxRate.toNumber()
+    }))),
     prisma.organization.findUnique({ where: { id: organizationId } }),
   ]);
 
@@ -57,6 +62,13 @@ export default async function EditInvoicePage({ params }: { params: Promise<{ id
     customerNameOrId: invoice.customer.id,
     placeOfSupply: invoice.placeOfSupply || '',
     notes: invoice.notes || '',
+    invoiceRemarks: invoice.invoiceRemarks,
+    invoiceTerms: invoice.invoiceTerms,
+    paymentMode: invoice.paymentMode,
+    roundOff: toRupees(invoice.roundOff),
+    reverseCharge: invoice.reverseCharge,
+    pdfTemplate: invoice.pdfTemplate,
+    customerDetails: invoice.customerDetails,
     billingAddress: invoice.billingAddress,
     shippingAddress: invoice.shippingAddress,
     shippingName: invoice.shippingName,
@@ -64,10 +76,12 @@ export default async function EditInvoicePage({ params }: { params: Promise<{ id
       productId: item.productId,
       description: item.description,
       hsnCode: item.hsnCode || '',
+      referenceId: item.referenceId || '',
+      lineDate: item.lineDate ? item.lineDate.toISOString().slice(0, 10) : '',
       quantity: Number(item.quantity),
-      unitPrice: Number(item.unitPrice),
+      unitPrice: toRupees(item.unitPrice),
       taxRate: Number(item.taxRate),
-      discount: Number((item as any).discount || 0),
+      discount: toRupees(item.discount),
     })),
   };
 
@@ -89,6 +103,17 @@ export default async function EditInvoicePage({ params }: { params: Promise<{ id
         orgStateCode={organization?.stateCode || '27'}
         defaultInvoiceNumber={invoice.invoiceNumber}
         defaultTemplate={organization?.defaultTemplate || 'modern'}
+        orgProfile={
+          organization
+            ? {
+                name: organization.name,
+                bankName: organization.bankName,
+                bankAccount: organization.bankAccount,
+                bankIfsc: organization.bankIfsc,
+                bankAccountType: organization.bankAccountType,
+              }
+            : undefined
+        }
         editMode={true}
         existingData={existingData}
       />
