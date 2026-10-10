@@ -5,7 +5,11 @@ import type { ProcessedItem } from "@/lib/gst";
 export async function buildInvoiceItemCreates(
   tx: Prisma.TransactionClient,
   organizationId: string,
-  rawItems: Array<{ productId?: string | null | undefined }>,
+  rawItems: Array<{
+    productId?: string | null | undefined;
+    referenceId?: string | null;
+    lineDate?: string | null;
+  }>,
   processedItems: ProcessedItem[]
 ): Promise<Prisma.InvoiceItemCreateWithoutInvoiceInput[]> {
   const ids = [
@@ -27,6 +31,8 @@ export async function buildInvoiceItemCreates(
   return processedItems.map((pi, i) => ({
     description: pi.description,
     hsnCode: pi.hsnCode,
+    referenceId: rawItems[i]?.referenceId?.trim() || null,
+    lineDate: rawItems[i]?.lineDate ? new Date(rawItems[i].lineDate!) : null,
     quantity: pi.quantity,
     unitPrice: pi.unitPrice,
     taxRate: pi.taxRate,

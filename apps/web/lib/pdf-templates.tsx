@@ -12,6 +12,8 @@ import { amountInWordsIndian } from "./amount-in-words";
 type InvoiceItem = {
   description: string;
   hsnCode?: string | null;
+  referenceId?: string | null;
+  lineDate?: Date | string | null;
   // At runtime these often come from Prisma Decimal – keep type wide and
   // coerce to numbers/strings right before rendering into <Text>.
   quantity: number | string | { toNumber?: () => number };
@@ -40,6 +42,11 @@ type InvoiceData = {
   shippingAddress?: string | null;
   shippingName?: string | null;
   discountTotal?: number | string | { toNumber?: () => number };
+  invoiceRemarks?: string | null;
+  invoiceTerms?: string | null;
+  paymentMode?: string | null;
+  roundOff?: number | string | { toNumber?: () => number };
+  reverseCharge?: boolean;
   items: InvoiceItem[];
 
   customer: {
@@ -60,6 +67,7 @@ type InvoiceData = {
     bankName?: string | null;
     bankAccount?: string | null;
     bankIfsc?: string | null;
+    bankAccountType?: string | null;
   };
 };
 
@@ -726,10 +734,10 @@ function TaxPDF({ inv }: { inv: InvoiceData }) {
                 <Text style={s.metaLabel}>Invoice Date:</Text>
                 <Text style={s.metaVal}>{fmtDateTax(inv.issueDate)}</Text>
               </View>
-              {inv.notes ? (
+              {inv.invoiceRemarks || inv.notes ? (
                 <View style={s.metaLine}>
                   <Text style={s.metaLabel}>Remarks:</Text>
-                  <Text style={s.metaVal}>{inv.notes}</Text>
+                  <Text style={s.metaVal}>{inv.invoiceRemarks || inv.notes}</Text>
                 </View>
               ) : null}
               <View style={s.metaLine}>
@@ -738,7 +746,7 @@ function TaxPDF({ inv }: { inv: InvoiceData }) {
               </View>
               <View style={s.metaLine}>
                 <Text style={s.metaLabel}>Reverse Charge:</Text>
-                <Text style={s.metaVal}>No</Text>
+                <Text style={s.metaVal}>{inv.reverseCharge ? "Yes" : "No"}</Text>
               </View>
             </View>
           </View>
@@ -789,7 +797,7 @@ function TaxPDF({ inv }: { inv: InvoiceData }) {
               <View style={s.tableHead}>
                 <Text style={[s.th, { width: "6%", textAlign: "center" }]}>Sr.</Text>
                 <Text style={[s.th, { width: "44%" }]}>Particulars</Text>
-                <Text style={[s.th, { width: "18%", textAlign: "center" }]}>Reference ID</Text>
+                <Text style={[s.th, { width: "18%", textAlign: "center" }]}>Ride ID</Text>
                 <Text style={[s.th, { width: "16%", textAlign: "center" }]}>Date</Text>
                 <Text style={[s.th, { width: "16%", textAlign: "right" }]}>Amount (Rs.)</Text>
               </View>
@@ -797,8 +805,12 @@ function TaxPDF({ inv }: { inv: InvoiceData }) {
                 <View key={i} style={s.tableRow}>
                   <Text style={[s.td, { width: "6%", textAlign: "center" }]}>{i + 1}</Text>
                   <Text style={[s.td, { width: "44%" }]}>{item.description}</Text>
-                  <Text style={[s.td, { width: "18%", textAlign: "center" }]}>{item.hsnCode || "—"}</Text>
-                  <Text style={[s.td, { width: "16%", textAlign: "center" }]}>—</Text>
+                  <Text style={[s.td, { width: "18%", textAlign: "center" }]}>
+                    {item.referenceId || item.hsnCode || "—"}
+                  </Text>
+                  <Text style={[s.td, { width: "16%", textAlign: "center" }]}>
+                    {item.lineDate ? fmtDateTax(new Date(item.lineDate)) : "—"}
+                  </Text>
                   <Text style={[s.td, { width: "16%", textAlign: "right" }]}>{fmtRs(lineBase(item))}</Text>
                 </View>
               ))}
@@ -816,12 +828,17 @@ function TaxPDF({ inv }: { inv: InvoiceData }) {
               {inv.organization.bankName ? <Text style={s.line}>Bank Name: {inv.organization.bankName}</Text> : null}
               {inv.organization.bankAccount ? <Text style={s.line}>A/c No: {inv.organization.bankAccount}</Text> : null}
               {inv.organization.bankIfsc ? <Text style={s.line}>IFSC: {inv.organization.bankIfsc}</Text> : null}
-              <Text style={[s.line, { marginTop: 6 }]}>Payment Mode: Bank Transfer (NEFT / RTGS)</Text>
+              {inv.organization.bankAccountType ? (
+                <Text style={s.line}>Account Type: {inv.organization.bankAccountType}</Text>
+              ) : null}
+              <Text style={[s.line, { marginTop: 6 }]}>
+                Payment Mode: {inv.paymentMode || "Bank Transfer (NEFT / RTGS) to the account above."}
+              </Text>
               <Text style={[s.line, { marginTop: 6, fontFamily: "Helvetica-Bold" }]}>
                 Amount (In Words): {amountInWordsIndian(totalRupees)}
               </Text>
-              {inv.notes && reimbItems.length === 0 ? (
-                <Text style={[s.line, { marginTop: 8, fontSize: 7 }]}>TERMS: {inv.notes}</Text>
+              {inv.invoiceTerms ? (
+                <Text style={[s.line, { marginTop: 8, fontSize: 7 }]}>TERMS: {inv.invoiceTerms}</Text>
               ) : null}
             </View>
             <View style={s.footerRight}>
@@ -831,7 +848,9 @@ function TaxPDF({ inv }: { inv: InvoiceData }) {
               </View>
               {isInterState ? (
                 <View style={s.taxLine}>
-                  <Text>IGST @ {taxableItems[0] ? toNumber(taxableItems[0].taxRate) : 18}%</Text>
+                  <Text>
+                    IGST ({taxableItems[0] ? toNumber(taxableItems[0].taxRate) : 18}%)
+                  </Text>
                   <Text>{fmtRs(inv.igstTotal)}</Text>
                 </View>
               ) : (
@@ -858,6 +877,10 @@ function TaxPDF({ inv }: { inv: InvoiceData }) {
                   <Text>{fmtRs(reimbTotal)}</Text>
                 </View>
               )}
+              <View style={s.taxLine}>
+                <Text>Round Off</Text>
+                <Text>{fmtRs(inv.roundOff ?? 0)}</Text>
+              </View>
               <View style={[s.taxLine, { marginTop: 6 }]}>
                 <Text style={{ fontFamily: "Helvetica-Bold", fontSize: 9 }}>Grand Total</Text>
                 <Text style={{ fontFamily: "Helvetica-Bold", fontSize: 9 }}>{fmtRs(inv.total)}</Text>

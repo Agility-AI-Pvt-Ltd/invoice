@@ -57,7 +57,10 @@ export default async function InvoiceViewPage({ params }: { params: Promise<{ id
   const totalPaid = toRupees(totalPaidPaise);
   const totalInRupees = toRupees(displayTotalPaise);
   const remaining = totalInRupees - totalPaid;
-  const template = (invoice.organization as any).defaultTemplate || 'modern';
+  const template =
+    (invoice as any).pdfTemplate ||
+    (invoice.organization as any).defaultTemplate ||
+    'modern';
 
   return (
     <div className="p-8 max-w-5xl mx-auto w-full space-y-8 pb-24 text-foreground">
@@ -558,8 +561,9 @@ function TaxTemplate({ invoice, isInterState }: any) {
     Number(item.quantity) * Number(item.unitPrice) - Number(item.discount || 0);
   const taxableSubtotal = lineItems.reduce((s: number, item: any) => s + lineBase(item), 0);
   const reimbTotal = reimbItems.reduce((s: number, item: any) => s + lineBase(item), 0);
-  const totalRupees = toRupees(resolvedInvoiceTotal(invoice));
+  const totalRupees = toRupees(Number(invoice.total));
   const org = invoice.organization;
+  const roundOffRupees = toRupees(Number(invoice.roundOff ?? 0));
 
   return (
     <div className="p-8 text-[11px] text-black font-serif leading-snug">
@@ -578,9 +582,11 @@ function TaxTemplate({ invoice, isInterState }: any) {
           <div className="p-3 space-y-1">
             <p><span className="font-bold inline-block w-32">Invoice No:</span>{invoice.invoiceNumber}</p>
             <p><span className="font-bold inline-block w-32">Invoice Date:</span>{new Date(invoice.issueDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-')}</p>
-            {invoice.notes && <p><span className="font-bold inline-block w-32 align-top">Remarks:</span><span className="inline-block max-w-[240px]">{invoice.notes}</span></p>}
+            {(invoice.invoiceRemarks || invoice.notes) && (
+              <p><span className="font-bold inline-block w-32 align-top">Remarks:</span><span className="inline-block max-w-60">{invoice.invoiceRemarks || invoice.notes}</span></p>
+            )}
             <p><span className="font-bold inline-block w-32">Place of Supply:</span>{invoice.placeOfSupply || invoice.customer.stateCode}</p>
-            <p><span className="font-bold inline-block w-32">Reverse Charge:</span>No</p>
+            <p><span className="font-bold inline-block w-32">Reverse Charge:</span>{invoice.reverseCharge ? 'Yes' : 'No'}</p>
           </div>
         </div>
 
@@ -636,7 +642,7 @@ function TaxTemplate({ invoice, isInterState }: any) {
                 <tr className="bg-neutral-100 border-b border-black">
                   <th className="p-1 w-8 text-center">Sr.</th>
                   <th className="p-1 text-left">Particulars</th>
-                  <th className="p-1 w-24 text-center">Reference ID</th>
+                  <th className="p-1 w-24 text-center">Ride ID</th>
                   <th className="p-1 w-20 text-center">Date</th>
                   <th className="p-1 w-28 text-right">Amount (Rs.)</th>
                 </tr>
@@ -646,8 +652,8 @@ function TaxTemplate({ invoice, isInterState }: any) {
                   <tr key={item.id} className="border-b border-neutral-200">
                     <td className="p-2 text-center">{i + 1}</td>
                     <td className="p-2">{item.description}</td>
-                    <td className="p-2 text-center">{item.hsnCode || '—'}</td>
-                    <td className="p-2 text-center">—</td>
+                    <td className="p-2 text-center">{item.referenceId || item.hsnCode || '—'}</td>
+                    <td className="p-2 text-center">{item.lineDate ? new Date(item.lineDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-') : '—'}</td>
                     <td className="p-2 text-right">{fmtRs(lineBase(item))}</td>
                   </tr>
                 ))}
@@ -667,8 +673,10 @@ function TaxTemplate({ invoice, isInterState }: any) {
             {org.bankName && <p>Bank Name: {org.bankName}</p>}
             {org.bankAccount && <p>A/c No: {org.bankAccount}</p>}
             {org.bankIfsc && <p>IFSC: {org.bankIfsc}</p>}
-            <p className="pt-2">Payment Mode: Bank Transfer (NEFT / RTGS)</p>
+            {org.bankAccountType && <p>Account Type: {org.bankAccountType}</p>}
+            <p className="pt-2">Payment Mode: {invoice.paymentMode || 'Bank Transfer (NEFT / RTGS) to the account above.'}</p>
             <p className="pt-2 font-bold">Amount (In Words): {amountInWordsIndian(totalRupees)}</p>
+            {invoice.invoiceTerms && <p className="pt-2 text-[10px]">TERMS: {invoice.invoiceTerms}</p>}
           </div>
           <div className="p-3 space-y-1">
             <div className="flex justify-between"><span>Taxable Value</span><span>{fmtRs(invoice.subTotal)}</span></div>
@@ -687,9 +695,10 @@ function TaxTemplate({ invoice, isInterState }: any) {
             {reimbTotal > 0 && (
               <div className="flex justify-between"><span>Add: Reimbursement</span><span>{fmtRs(reimbTotal)}</span></div>
             )}
+            <div className="flex justify-between"><span>Round Off</span><span>{fmtRs(roundOffRupees)}</span></div>
             <div className="flex justify-between font-bold text-xs pt-2">
               <span>Grand Total</span>
-              <span>{fmtRs(resolvedInvoiceTotal(invoice))}</span>
+              <span>{fmtRs(totalRupees)}</span>
             </div>
             <div className="pt-8 text-right">
               <p className="font-bold">For {org.name}</p>

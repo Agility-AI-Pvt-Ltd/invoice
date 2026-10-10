@@ -37,9 +37,10 @@ model Organization {
   stateCode    String?
   phone        String?
   website      String?
-  bankName     String?
-  bankAccount  String?
-  bankIfsc     String?
+  bankName         String?
+  bankAccount      String?
+  bankIfsc         String?
+  bankAccountType  String?
   upiId        String?
   
   ownerId      String
@@ -289,6 +290,12 @@ model Invoice {
   total          Int
 
   notes          String?
+  invoiceRemarks  String?
+  invoiceTerms    String?
+  paymentMode     String?
+  roundOff        Int       @default(0)
+  reverseCharge   Boolean   @default(false)
+  pdfTemplate     String?
   customerDetails String?
   billingAddress   String?
   shippingAddress  String?
@@ -326,6 +333,8 @@ model InvoiceItem {
 
   description String
   hsnCode     String?
+  referenceId String?
+  lineDate    DateTime?
     quantity    Decimal  @db.Decimal(12, 4)
 
     unitPrice   Int

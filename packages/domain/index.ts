@@ -33,6 +33,8 @@ export const invoiceItemSchema = z.object({
   taxRate: z.number().min(0).max(100, "Tax rate must be between 0 and 100"),
   discount: z.number().nonnegative("Discount cannot be negative").default(0),
   hsnCode: z.string().optional().nullable(),
+  referenceId: z.string().optional().nullable(),
+  lineDate: z.string().optional().nullable(),
   productId: z.string().optional().nullable(),
 });
 

@@ -18,6 +18,10 @@ import {
   Box,
 } from "lucide-react";
 import { computeInvoiceTotals } from "@/lib/gst";
+import {
+  DEFAULT_TAX_INVOICE_TERMS,
+  DEFAULT_TAX_PAYMENT_MODE,
+} from "@/lib/tax-invoice-defaults";
 import { deriveRateOnlyFromTargetTotal } from "@/lib/gst-compute";
 import { formatInr, toRupees } from "@/lib/money";
 
@@ -75,10 +79,20 @@ type LineItem = {
   productId: string | null;
   description: string;
   hsnCode: string;
+  referenceId: string;
+  lineDate: string;
   quantity: number;
   unitPrice: number;
   taxRate: number;
   discount: number;
+};
+
+type OrgProfile = {
+  name: string;
+  bankName?: string | null;
+  bankAccount?: string | null;
+  bankIfsc?: string | null;
+  bankAccountType?: string | null;
 };
 
 const TEMPLATES = [
@@ -324,6 +338,12 @@ type ExistingData = {
   placeOfSupply: string;
   notes: string;
   customerDetails?: string | null;
+  invoiceRemarks?: string | null;
+  invoiceTerms?: string | null;
+  paymentMode?: string | null;
+  roundOff?: number;
+  reverseCharge?: boolean;
+  pdfTemplate?: string | null;
   billingAddress?: string | null;
   shippingAddress?: string | null;
   shippingName?: string | null;
@@ -331,6 +351,8 @@ type ExistingData = {
     productId: string | null;
     description: string;
     hsnCode: string;
+    referenceId?: string;
+    lineDate?: string;
     quantity: number;
     unitPrice: number;
     taxRate: number;
@@ -345,6 +367,7 @@ export default function InvoiceForm({
   orgStateCode,
   defaultInvoiceNumber,
   defaultTemplate,
+  orgProfile,
   editMode = false,
   existingData,
 }: {
@@ -353,13 +376,17 @@ export default function InvoiceForm({
   orgStateCode: string;
   defaultInvoiceNumber: string;
   defaultTemplate: string;
+  orgProfile?: OrgProfile;
   editMode?: boolean;
   existingData?: ExistingData;
 }) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [selectedTemplate, setSelectedTemplate] = useState(defaultTemplate);
+  const [selectedTemplate, setSelectedTemplate] = useState(
+    existingData?.pdfTemplate || defaultTemplate,
+  );
+  const isTaxTemplate = selectedTemplate === "tax";
   const [showAddCustomer, setShowAddCustomer] = useState(false);
 
   const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
@@ -372,6 +399,25 @@ export default function InvoiceForm({
   ); // YYYY-MM-DD
   const [dueDate, setDueDate] = useState(existingData?.dueDate ?? "");
   const [notes, setNotes] = useState(existingData?.notes ?? "");
+  const [invoiceRemarks, setInvoiceRemarks] = useState(
+    existingData?.invoiceRemarks ?? "",
+  );
+  const [invoiceTerms, setInvoiceTerms] = useState(
+    existingData?.invoiceTerms ?? DEFAULT_TAX_INVOICE_TERMS,
+  );
+  const [paymentMode, setPaymentMode] = useState(
+    existingData?.paymentMode ?? DEFAULT_TAX_PAYMENT_MODE,
+  );
+  const [roundOff, setRoundOff] = useState(existingData?.roundOff ?? 0);
+  const [reverseCharge, setReverseCharge] = useState(
+    existingData?.reverseCharge ?? false,
+  );
+  const [bankName, setBankName] = useState(orgProfile?.bankName ?? "");
+  const [bankAccount, setBankAccount] = useState(orgProfile?.bankAccount ?? "");
+  const [bankIfsc, setBankIfsc] = useState(orgProfile?.bankIfsc ?? "");
+  const [bankAccountType, setBankAccountType] = useState(
+    orgProfile?.bankAccountType ?? "",
+  );
 
   const initialCustomerName = existingData
     ? (initialCustomers.find((c) => c.id === existingData.customerNameOrId)
@@ -396,6 +442,8 @@ export default function InvoiceForm({
       productId: item.productId ?? null,
       description: item.description,
       hsnCode: item.hsnCode,
+      referenceId: item.referenceId ?? "",
+      lineDate: item.lineDate ?? "",
       quantity: Number(item.quantity),
       unitPrice: Number(item.unitPrice),
       taxRate: Number(item.taxRate),
@@ -406,6 +454,8 @@ export default function InvoiceForm({
         productId: null,
         description: "",
         hsnCode: "",
+        referenceId: "",
+        lineDate: "",
         quantity: 0,
         unitPrice: 0,
         taxRate: 18,
@@ -468,6 +518,8 @@ export default function InvoiceForm({
         productId: null,
         description: "",
         hsnCode: "",
+        referenceId: "",
+        lineDate: "",
         quantity: 0,
         unitPrice: 0,
         taxRate: 18,
@@ -608,10 +660,25 @@ export default function InvoiceForm({
           placeOfSupply: effectiveStateCode,
           isInterState,
           discountTotal: saveTotals.discountTotal,
+          invoiceRemarks: isTaxTemplate ? invoiceRemarks : undefined,
+          invoiceTerms: isTaxTemplate ? invoiceTerms : undefined,
+          paymentMode: isTaxTemplate ? paymentMode : undefined,
+          roundOff: isTaxTemplate ? Number(roundOff) || 0 : undefined,
+          reverseCharge: isTaxTemplate ? reverseCharge : undefined,
+          bankDetails: isTaxTemplate
+            ? {
+                bankName,
+                bankAccount,
+                bankIfsc,
+                bankAccountType,
+              }
+            : undefined,
           items: itemsToSave.map((i) => ({
             productId: i.productId ?? undefined,
             description: i.description,
             hsnCode: i.hsnCode,
+            referenceId: isTaxTemplate ? i.referenceId : undefined,
+            lineDate: isTaxTemplate && i.lineDate ? i.lineDate : undefined,
             quantity: Number(i.quantity),
             unitPrice: Number(i.unitPrice),
             taxRate: Number(i.taxRate),
@@ -710,6 +777,123 @@ export default function InvoiceForm({
                 ))}
               </div>
             </div>
+
+            {isTaxTemplate && (
+              <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-6">
+                <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
+                  Tax Invoice Details
+                </h3>
+                <div>
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                    Header Remarks (programme / project description)
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={invoiceRemarks}
+                    onChange={(e) => setInvoiceRemarks(e.target.value)}
+                    placeholder="e.g. AI training programme dates and scope…"
+                    className={`${inputCls} resize-none min-h-[80px]`}
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="reverseCharge"
+                    checked={reverseCharge}
+                    onChange={(e) => setReverseCharge(e.target.checked)}
+                    className="rounded border-border"
+                  />
+                  <label htmlFor="reverseCharge" className="text-sm font-medium">
+                    Tax payable on reverse charge
+                  </label>
+                </div>
+                <div className="pt-2 border-t border-border/50 space-y-4">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                    Bank account (shown on PDF footer)
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                        Bank name & branch
+                      </label>
+                      <input
+                        value={bankName}
+                        onChange={(e) => setBankName(e.target.value)}
+                        placeholder="IDFC FIRST Bank, Sector 137 Branch"
+                        className={inputCls}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                        Account number
+                      </label>
+                      <input
+                        value={bankAccount}
+                        onChange={(e) => setBankAccount(e.target.value)}
+                        className={inputCls}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                        IFSC
+                      </label>
+                      <input
+                        value={bankIfsc}
+                        onChange={(e) => setBankIfsc(e.target.value)}
+                        className={inputCls}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                        Account type
+                      </label>
+                      <input
+                        value={bankAccountType}
+                        onChange={(e) => setBankAccountType(e.target.value)}
+                        placeholder="Startup Current Account"
+                        className={inputCls}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                    Payment mode
+                  </label>
+                  <input
+                    value={paymentMode}
+                    onChange={(e) => setPaymentMode(e.target.value)}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                    Terms & conditions
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={invoiceTerms}
+                    onChange={(e) => setInvoiceTerms(e.target.value)}
+                    className={`${inputCls} resize-none min-h-[80px]`}
+                  />
+                </div>
+                <div className="w-full md:w-48">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                    Round off (₹)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={roundOff === 0 ? "" : roundOff}
+                    onChange={(e) => setRoundOff(Number(e.target.value) || 0)}
+                    className={inputCls}
+                  />
+                </div>
+                <p className="text-[10px] text-muted-foreground italic">
+                  Use GST &gt; 0% for professional fees. Use 0% GST for reimbursement lines and fill Ride ID + Date on each row.
+                </p>
+              </div>
+            )}
 
             {/* Basic Info */}
             <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-6">
@@ -880,7 +1064,9 @@ export default function InvoiceForm({
                   </div>
                   <div className="mt-4">
                     <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1.5 block">
-                      Customer Description / Extra Info (Appears on PDF)
+                      {isTaxTemplate
+                        ? "Attention (e.g. ICT Team)"
+                        : "Customer Description / Extra Info (Appears on PDF)"}
                     </label>
                     <textarea
                       rows={2}
@@ -1065,20 +1251,55 @@ export default function InvoiceForm({
                         </div>
                         <div className="w-full sm:w-[120px]">
                           <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1 block">
-                            HSN/SAC
+                            {isTaxTemplate && Number(item.taxRate) === 0
+                              ? "Ride / Ref ID"
+                              : isTaxTemplate
+                                ? "SAC Code"
+                                : "HSN/SAC"}
                           </label>
                           <input
-                            placeholder="HSN/SAC"
-                            value={item.hsnCode}
+                            placeholder={
+                              isTaxTemplate && Number(item.taxRate) === 0
+                                ? "Ride ID"
+                                : "HSN/SAC"
+                            }
+                            value={
+                              isTaxTemplate && Number(item.taxRate) === 0
+                                ? item.referenceId
+                                : item.hsnCode
+                            }
                             onChange={(e) =>
-                              updateItem(item.id, "hsnCode", e.target.value)
+                              updateItem(
+                                item.id,
+                                isTaxTemplate && Number(item.taxRate) === 0
+                                  ? "referenceId"
+                                  : "hsnCode",
+                                e.target.value,
+                              )
                             }
                             className={inputCls}
                           />
                         </div>
+                        {isTaxTemplate && Number(item.taxRate) === 0 && (
+                          <div className="w-[130px]">
+                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1 block">
+                              Date
+                            </label>
+                            <input
+                              type="date"
+                              value={item.lineDate}
+                              onChange={(e) =>
+                                updateItem(item.id, "lineDate", e.target.value)
+                              }
+                              className={inputCls}
+                            />
+                          </div>
+                        )}
                         <div className="w-[80px]">
                           <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1 block">
-                            Qty
+                            {isTaxTemplate && Number(item.taxRate) > 0
+                              ? "Days"
+                              : "Qty"}
                           </label>
                           <input
                             type="number"
@@ -1105,7 +1326,9 @@ export default function InvoiceForm({
                         </div>
                         <div className="w-[130px]">
                           <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1 block flex items-center gap-1">
-                            Rate (₹)
+                            {isTaxTemplate && Number(item.taxRate) > 0
+                              ? "Per day (₹)"
+                              : "Rate (₹)"}
                             {negotiatedRates.has(item.id) ? (
                               <span className="text-[8px] bg-amber-500/15 text-amber-700 px-1 rounded" title="Adjusted from negotiated total">
                                 Adjusted
@@ -1375,29 +1598,46 @@ export default function InvoiceForm({
                   </>
                 )}
 
+                {isTaxTemplate && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Round off</span>
+                    <span className="font-semibold">
+                      {formatInr(roundOff, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
+                )}
+
                 <div className="pt-4 border-t border-border flex justify-between">
                   <span className="text-base font-bold">Total Amount</span>
                   <span className="text-xl font-bold text-primary">
-                    {formatInr(totals.total, {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
+                    {formatInr(
+                      totals.total + (isTaxTemplate ? Number(roundOff) || 0 : 0),
+                      {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      },
+                    )}
                   </span>
                 </div>
               </div>
 
               <div className="space-y-4">
-                <div>
-                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
-                    Additional Notes
-                  </label>
-                  <textarea
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Thank you for your business!"
-                    className={`${inputCls} h-24 resize-none`}
-                  />
-                </div>
+                {!isTaxTemplate && (
+                  <div>
+                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                      Additional Notes
+                    </label>
+                    <textarea
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      placeholder="Thank you for your business!"
+                      className={`${inputCls} h-24 resize-none`}
+                    />
+                  </div>
+                )}
 
                 <button
                   type="submit"

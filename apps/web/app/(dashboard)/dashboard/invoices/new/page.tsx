@@ -63,6 +63,17 @@ export default async function NewInvoicePage() {
         orgStateCode={organization?.stateCode || "27"}
         defaultInvoiceNumber={nextInvoiceNumber}
         defaultTemplate={organization?.defaultTemplate || "modern"}
+        orgProfile={
+          organization
+            ? {
+                name: organization.name,
+                bankName: organization.bankName,
+                bankAccount: organization.bankAccount,
+                bankIfsc: organization.bankIfsc,
+                bankAccountType: organization.bankAccountType,
+              }
+            : undefined
+        }
       />
     </div>
   );

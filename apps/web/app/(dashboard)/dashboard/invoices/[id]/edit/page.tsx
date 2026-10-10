@@ -62,6 +62,13 @@ export default async function EditInvoicePage({ params }: { params: Promise<{ id
     customerNameOrId: invoice.customer.id,
     placeOfSupply: invoice.placeOfSupply || '',
     notes: invoice.notes || '',
+    invoiceRemarks: invoice.invoiceRemarks,
+    invoiceTerms: invoice.invoiceTerms,
+    paymentMode: invoice.paymentMode,
+    roundOff: toRupees(invoice.roundOff),
+    reverseCharge: invoice.reverseCharge,
+    pdfTemplate: invoice.pdfTemplate,
+    customerDetails: invoice.customerDetails,
     billingAddress: invoice.billingAddress,
     shippingAddress: invoice.shippingAddress,
     shippingName: invoice.shippingName,
@@ -69,6 +76,8 @@ export default async function EditInvoicePage({ params }: { params: Promise<{ id
       productId: item.productId,
       description: item.description,
       hsnCode: item.hsnCode || '',
+      referenceId: item.referenceId || '',
+      lineDate: item.lineDate ? item.lineDate.toISOString().slice(0, 10) : '',
       quantity: Number(item.quantity),
       unitPrice: toRupees(item.unitPrice),
       taxRate: Number(item.taxRate),
@@ -94,6 +103,17 @@ export default async function EditInvoicePage({ params }: { params: Promise<{ id
         orgStateCode={organization?.stateCode || '27'}
         defaultInvoiceNumber={invoice.invoiceNumber}
         defaultTemplate={organization?.defaultTemplate || 'modern'}
+        orgProfile={
+          organization
+            ? {
+                name: organization.name,
+                bankName: organization.bankName,
+                bankAccount: organization.bankAccount,
+                bankIfsc: organization.bankIfsc,
+                bankAccountType: organization.bankAccountType,
+              }
+            : undefined
+        }
         editMode={true}
         existingData={existingData}
       />

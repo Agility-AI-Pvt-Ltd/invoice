@@ -37,7 +37,9 @@ export async function GET(
     const template =
       requestedTemplate && allowedTemplates.includes(requestedTemplate)
         ? requestedTemplate
-        : (invoice.organization as any).defaultTemplate ?? "modern";
+        : (invoice as any).pdfTemplate ??
+          (invoice.organization as any).defaultTemplate ??
+          "modern";
 
     if (!allowedTemplates.includes(template)) {
       return NextResponse.json(

@@ -35,6 +35,13 @@ export async function POST(request: Request) {
       shippingAddress,
       shippingName,
       customerDetails,
+      template,
+      invoiceRemarks,
+      invoiceTerms,
+      paymentMode,
+      roundOff,
+      reverseCharge,
+      bankDetails,
     } = body;
 
     // 1. Basic Validation
@@ -151,6 +158,19 @@ export async function POST(request: Request) {
         : (!!orgState && !!supplyState && orgState !== supplyState);
 
       const totals = computeInvoiceTotals(items, isInterState);
+      const roundOffStored = toStoredAmount(Number(roundOff) || 0);
+
+      if (bankDetails && typeof bankDetails === "object") {
+        await tx.organization.update({
+          where: { id: organization.id },
+          data: {
+            bankName: bankDetails.bankName?.trim() || null,
+            bankAccount: bankDetails.bankAccount?.trim() || null,
+            bankIfsc: bankDetails.bankIfsc?.trim() || null,
+            bankAccountType: bankDetails.bankAccountType?.trim() || null,
+          },
+        });
+      }
 
       // 2d. Create Invoice Items
       const itemCreates = await buildInvoiceItemCreates(
@@ -175,12 +195,18 @@ export async function POST(request: Request) {
           sgstTotal: totals.sgstTotal,
           igstTotal: totals.igstTotal,
           discountTotal: totals.discountTotal,
-          total: totals.grandTotal,
+          total: totals.grandTotal + roundOffStored,
           status: "DRAFT",
           billingAddress,
           shippingAddress,
           shippingName,
           customerDetails,
+          invoiceRemarks: invoiceRemarks?.trim() || null,
+          invoiceTerms: invoiceTerms?.trim() || null,
+          paymentMode: paymentMode?.trim() || null,
+          roundOff: roundOffStored,
+          reverseCharge: Boolean(reverseCharge),
+          pdfTemplate: template === "tax" ? "tax" : template || null,
           items: { create: itemCreates },
         },
         include: { items: true, customer: true },
