@@ -844,7 +844,7 @@ function TaxPDF({ inv }: { inv: InvoiceData }) {
             <View style={s.footerRight}>
               <View style={s.taxLine}>
                 <Text>Taxable Value</Text>
-                <Text>{fmtRs(inv.subTotal)}</Text>
+                <Text>{fmtRs(taxableSubtotal || inv.subTotal)}</Text>
               </View>
               {isInterState ? (
                 <View style={s.taxLine}>
@@ -866,9 +866,14 @@ function TaxPDF({ inv }: { inv: InvoiceData }) {
                 </>
               )}
               <View style={[s.taxLine, { borderTopWidth: 0.5, borderTopColor: "#999", paddingTop: 4, marginTop: 4 }]}>
-                <Text style={{ fontFamily: "Helvetica-Bold" }}>Subtotal</Text>
+                <Text style={{ fontFamily: "Helvetica-Bold" }}>Subtotal (Services)</Text>
                 <Text style={{ fontFamily: "Helvetica-Bold" }}>
-                  {fmtRs(toNumber(inv.subTotal) + toNumber(inv.cgstTotal) + toNumber(inv.sgstTotal) + toNumber(inv.igstTotal))}
+                  {fmtRs(
+                    toNumber(taxableSubtotal || inv.subTotal) +
+                      toNumber(inv.cgstTotal) +
+                      toNumber(inv.sgstTotal) +
+                      toNumber(inv.igstTotal),
+                  )}
                 </Text>
               </View>
               {reimbTotal > 0 && (

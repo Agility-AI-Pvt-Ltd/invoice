@@ -87,6 +87,14 @@ type LineItem = {
   discount: number;
 };
 
+type ReimbursementRow = {
+  id: string;
+  description: string;
+  referenceId: string;
+  lineDate: string;
+  amount: number;
+};
+
 type OrgProfile = {
   name: string;
   bankName?: string | null;
@@ -360,6 +368,69 @@ type ExistingData = {
   }[];
 };
 
+type FormItemSeed = ExistingData["items"][number];
+
+function splitFormLineItems(raw: FormItemSeed[]) {
+  const taxable: LineItem[] = [];
+  const reimb: ReimbursementRow[] = [];
+  raw.forEach((item, index) => {
+    if (Number(item.taxRate) === 0) {
+      const amount =
+        Number(item.quantity) * Number(item.unitPrice) -
+        Number(item.discount || 0);
+      reimb.push({
+        id: `reimb-${index}`,
+        description: item.description,
+        referenceId: item.referenceId ?? item.hsnCode ?? "",
+        lineDate: item.lineDate ?? "",
+        amount: Math.max(0, amount),
+      });
+      return;
+    }
+    taxable.push({
+      id: String(taxable.length + 1),
+      productId: item.productId ?? null,
+      description: item.description,
+      hsnCode: item.hsnCode,
+      referenceId: item.referenceId ?? "",
+      lineDate: item.lineDate ?? "",
+      quantity: Number(item.quantity),
+      unitPrice: Number(item.unitPrice),
+      taxRate: Number(item.taxRate),
+      discount: Number(item.discount || 0),
+    });
+  });
+  return { taxable, reimb };
+}
+
+function reimbursementToLineItem(row: ReimbursementRow): LineItem {
+  return {
+    id: row.id,
+    productId: null,
+    description: row.description,
+    hsnCode: "",
+    referenceId: row.referenceId,
+    lineDate: row.lineDate,
+    quantity: 1,
+    unitPrice: row.amount,
+    taxRate: 0,
+    discount: 0,
+  };
+}
+
+const defaultTaxableLine = (): LineItem => ({
+  id: "1",
+  productId: null,
+  description: "",
+  hsnCode: "",
+  referenceId: "",
+  lineDate: "",
+  quantity: 0,
+  unitPrice: 0,
+  taxRate: 18,
+  discount: 0,
+});
+
 // ------ Main Form ------
 export default function InvoiceForm({
   customers: initialCustomers,
@@ -436,33 +507,20 @@ export default function InvoiceForm({
   const [shippingName, setShippingName] = useState(existingData?.shippingName ?? "");
   const [sameAsBilling, setSameAsBilling] = useState(editMode ? (!existingData?.shippingAddress || existingData.shippingAddress === existingData.billingAddress) : true);
 
-  const [items, setItems] = useState<LineItem[]>(
-    existingData?.items.map((item, i) => ({
-      id: String(i + 1),
-      productId: item.productId ?? null,
-      description: item.description,
-      hsnCode: item.hsnCode,
-      referenceId: item.referenceId ?? "",
-      lineDate: item.lineDate ?? "",
-      quantity: Number(item.quantity),
-      unitPrice: Number(item.unitPrice),
-      taxRate: Number(item.taxRate),
-      discount: Number(item.discount || 0),
-    })) ?? [
-      {
-        id: "1",
-        productId: null,
-        description: "",
-        hsnCode: "",
-        referenceId: "",
-        lineDate: "",
-        quantity: 0,
-        unitPrice: 0,
-        taxRate: 18,
-        discount: 0,
-      },
-    ],
-  );
+  const [items, setItems] = useState<LineItem[]>(() => {
+    if (existingData?.items?.length) {
+      const split = splitFormLineItems(existingData.items);
+      if (split.taxable.length > 0) return split.taxable;
+    }
+    return [defaultTaxableLine()];
+  });
+
+  const [reimbursements, setReimbursements] = useState<ReimbursementRow[]>(() => {
+    if (existingData?.items?.length) {
+      return splitFormLineItems(existingData.items).reimb;
+    }
+    return [];
+  });
 
   /** Line items whose rate was derived from a negotiated total (not manually edited). */
   const [negotiatedRates, setNegotiatedRates] = useState<Set<string>>(new Set());
@@ -485,8 +543,41 @@ export default function InvoiceForm({
     return !!s1 && !!s2 && s1 !== s2;
   }, [effectiveStateCode, orgStateCode, manualTaxMode]);
 
+  const activeReimbursements = useMemo(
+    () =>
+      isTaxTemplate
+        ? reimbursements.filter(
+            (row) => row.description.trim() && Number(row.amount) > 0,
+          )
+        : [],
+    [isTaxTemplate, reimbursements],
+  );
+
+  const reimbursementTotal = useMemo(
+    () => activeReimbursements.reduce((sum, row) => sum + Number(row.amount), 0),
+    [activeReimbursements],
+  );
+
+  const allItemsForTotals = useMemo(() => {
+    const reimbLines = activeReimbursements.map(reimbursementToLineItem);
+    return [...items, ...reimbLines];
+  }, [items, activeReimbursements]);
+
   const totals = useMemo(() => {
     const computed = computeInvoiceTotals(
+      allItemsForTotals.map((item) => ({
+        description: item.description,
+        hsnCode: item.hsnCode,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        taxRate: item.taxRate,
+        discount: item.discount || 0,
+        productId: item.productId,
+      })),
+      isInterState,
+    );
+
+    const servicesOnly = computeInvoiceTotals(
       items.map((item) => ({
         description: item.description,
         hsnCode: item.hsnCode,
@@ -501,14 +592,15 @@ export default function InvoiceForm({
 
     return {
       subTotal: computed.subTotal,
+      taxableSubTotal: servicesOnly.subTotal,
       cgst: computed.cgstTotal,
       sgst: computed.sgstTotal,
       igst: computed.igstTotal,
       discountTotal: computed.discountTotal,
       total: computed.grandTotal,
-      processedItems: computed.processedItems,
+      processedItems: servicesOnly.processedItems,
     };
-  }, [items, isInterState]);
+  }, [allItemsForTotals, items, isInterState]);
 
   const addItem = () =>
     setItems((p) => [
@@ -601,7 +693,34 @@ export default function InvoiceForm({
     );
   };
 
-  const resolveItemsForSave = (): LineItem[] => items;
+  const resolveItemsForSave = (): LineItem[] => [
+    ...items,
+    ...activeReimbursements.map(reimbursementToLineItem),
+  ];
+
+  const addReimbursement = () =>
+    setReimbursements((prev) => [
+      ...prev,
+      {
+        id: Math.random().toString(36).slice(2, 11),
+        description: "",
+        referenceId: "",
+        lineDate: "",
+        amount: 0,
+      },
+    ]);
+
+  const updateReimbursement = (
+    id: string,
+    field: keyof ReimbursementRow,
+    value: string | number,
+  ) =>
+    setReimbursements((prev) =>
+      prev.map((row) => (row.id === id ? { ...row, [field]: value } : row)),
+    );
+
+  const removeReimbursement = (id: string) =>
+    setReimbursements((prev) => prev.filter((row) => row.id !== id));
 
   const updateItem = (
     id: string,
@@ -676,9 +795,11 @@ export default function InvoiceForm({
           items: itemsToSave.map((i) => ({
             productId: i.productId ?? undefined,
             description: i.description,
-            hsnCode: i.hsnCode,
-            referenceId: isTaxTemplate ? i.referenceId : undefined,
-            lineDate: isTaxTemplate && i.lineDate ? i.lineDate : undefined,
+            hsnCode: i.hsnCode || undefined,
+            referenceId:
+              isTaxTemplate && i.referenceId ? i.referenceId : undefined,
+            lineDate:
+              isTaxTemplate && i.lineDate ? i.lineDate : undefined,
             quantity: Number(i.quantity),
             unitPrice: Number(i.unitPrice),
             taxRate: Number(i.taxRate),
@@ -890,7 +1011,7 @@ export default function InvoiceForm({
                   />
                 </div>
                 <p className="text-[10px] text-muted-foreground italic">
-                  Use GST &gt; 0% for professional fees. Use 0% GST for reimbursement lines and fill Ride ID + Date on each row.
+                  Add professional fees in Line Items below, then add travel reimbursements in the dedicated section (no GST).
                 </p>
               </div>
             )}
@@ -1251,50 +1372,17 @@ export default function InvoiceForm({
                         </div>
                         <div className="w-full sm:w-[120px]">
                           <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1 block">
-                            {isTaxTemplate && Number(item.taxRate) === 0
-                              ? "Ride / Ref ID"
-                              : isTaxTemplate
-                                ? "SAC Code"
-                                : "HSN/SAC"}
+                            {isTaxTemplate ? "SAC Code" : "HSN/SAC"}
                           </label>
                           <input
-                            placeholder={
-                              isTaxTemplate && Number(item.taxRate) === 0
-                                ? "Ride ID"
-                                : "HSN/SAC"
-                            }
-                            value={
-                              isTaxTemplate && Number(item.taxRate) === 0
-                                ? item.referenceId
-                                : item.hsnCode
-                            }
+                            placeholder="HSN/SAC"
+                            value={item.hsnCode}
                             onChange={(e) =>
-                              updateItem(
-                                item.id,
-                                isTaxTemplate && Number(item.taxRate) === 0
-                                  ? "referenceId"
-                                  : "hsnCode",
-                                e.target.value,
-                              )
+                              updateItem(item.id, "hsnCode", e.target.value)
                             }
                             className={inputCls}
                           />
                         </div>
-                        {isTaxTemplate && Number(item.taxRate) === 0 && (
-                          <div className="w-[130px]">
-                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1 block">
-                              Date
-                            </label>
-                            <input
-                              type="date"
-                              value={item.lineDate}
-                              onChange={(e) =>
-                                updateItem(item.id, "lineDate", e.target.value)
-                              }
-                              className={inputCls}
-                            />
-                          </div>
-                        )}
                         <div className="w-[80px]">
                           <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1 block">
                             {isTaxTemplate && Number(item.taxRate) > 0
@@ -1528,6 +1616,144 @@ export default function InvoiceForm({
                 </button>
               </div>
             </div>
+
+            {isTaxTemplate && (
+              <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+                <div className="px-6 py-4 border-b border-border bg-secondary/20">
+                  <h3 className="text-xs font-bold text-foreground uppercase tracking-wide">
+                    Reimbursement of Out-of-Pocket Travel Expenses
+                  </h3>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    At actuals — no GST (pure agent). Amounts are added to the invoice grand total.
+                  </p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm min-w-[640px]">
+                    <thead>
+                      <tr className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider border-b border-border bg-secondary/10">
+                        <th className="px-4 py-3 text-left w-12">Sr.</th>
+                        <th className="px-4 py-3 text-left">Particulars</th>
+                        <th className="px-4 py-3 text-left w-44">Ride ID</th>
+                        <th className="px-4 py-3 text-left w-36">Date</th>
+                        <th className="px-4 py-3 text-right w-32">Amount (₹)</th>
+                        <th className="px-2 py-3 w-10" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {reimbursements.length === 0 && (
+                        <tr>
+                          <td
+                            colSpan={6}
+                            className="px-4 py-8 text-center text-xs text-muted-foreground italic"
+                          >
+                            No reimbursement rows yet.
+                          </td>
+                        </tr>
+                      )}
+                      {reimbursements.map((row, index) => (
+                        <tr key={row.id} className="border-b border-border/60">
+                          <td className="px-4 py-3 text-muted-foreground font-medium">
+                            {index + 1}
+                          </td>
+                          <td className="px-4 py-2">
+                            <input
+                              value={row.description}
+                              onChange={(e) =>
+                                updateReimbursement(
+                                  row.id,
+                                  "description",
+                                  e.target.value,
+                                )
+                              }
+                              placeholder="Cab fare: Indirapuram to Delhi Airport T3"
+                              className={inputCls}
+                            />
+                          </td>
+                          <td className="px-4 py-2">
+                            <input
+                              value={row.referenceId}
+                              onChange={(e) =>
+                                updateReimbursement(
+                                  row.id,
+                                  "referenceId",
+                                  e.target.value,
+                                )
+                              }
+                              placeholder="RD17890337881572228"
+                              className={`${inputCls} font-mono text-xs`}
+                            />
+                          </td>
+                          <td className="px-4 py-2">
+                            <input
+                              type="date"
+                              value={row.lineDate}
+                              onChange={(e) =>
+                                updateReimbursement(
+                                  row.id,
+                                  "lineDate",
+                                  e.target.value,
+                                )
+                              }
+                              className={inputCls}
+                            />
+                          </td>
+                          <td className="px-4 py-2">
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={row.amount === 0 ? "" : row.amount}
+                              onChange={(e) =>
+                                updateReimbursement(
+                                  row.id,
+                                  "amount",
+                                  Number(e.target.value) || 0,
+                                )
+                              }
+                              className={`${inputCls} text-right tabular-nums`}
+                            />
+                          </td>
+                          <td className="px-2 py-2">
+                            <button
+                              type="button"
+                              onClick={() => removeReimbursement(row.id)}
+                              className="p-1.5 text-muted-foreground hover:text-destructive rounded-md"
+                              aria-label="Remove reimbursement row"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-secondary/10 font-bold text-sm">
+                        <td colSpan={4} className="px-4 py-3 text-right">
+                          Total Reimbursement
+                        </td>
+                        <td className="px-4 py-3 text-right tabular-nums">
+                          {formatInr(reimbursementTotal, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </td>
+                        <td />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                <div className="px-6 py-4 border-t border-border flex justify-center">
+                  <button
+                    type="button"
+                    onClick={addReimbursement}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-primary hover:bg-primary/10 rounded-xl transition-all"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Reimbursement Row
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Sticky Summary Sidebar */}
@@ -1539,15 +1765,39 @@ export default function InvoiceForm({
               </h3>
 
               <div className="space-y-3 mb-6">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Subtotal</span>
-                  <span className="font-semibold">
-                    {formatInr(totals.subTotal, {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
-                  </span>
-                </div>
+                {isTaxTemplate ? (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Taxable value (services)</span>
+                    <span className="font-semibold">
+                      {formatInr(totals.taxableSubTotal, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Subtotal</span>
+                    <span className="font-semibold">
+                      {formatInr(totals.subTotal, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
+                )}
+
+                {isTaxTemplate && reimbursementTotal > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Add: Reimbursement</span>
+                    <span className="font-semibold">
+                      {formatInr(reimbursementTotal, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
+                )}
 
                 {totals.discountTotal > 0 && (
                   <div className="flex justify-between text-sm text-green-600 font-medium">
