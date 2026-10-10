@@ -92,6 +92,30 @@ const TEMPLATES = [
       </div>
     ),
   },
+  {
+    id: "tax",
+    name: "Tax Invoice",
+    desc: "Formal bordered GST layout",
+    preview: (
+      <div className="w-full h-28 bg-white border border-gray-800 rounded-lg overflow-hidden flex flex-col text-[8px] shadow-sm">
+        <div className="text-center font-bold py-1 border-b border-gray-800 text-[9px]">TAX INVOICE</div>
+        <div className="flex flex-1 border-b border-gray-300">
+          <div className="w-1/2 border-r border-gray-300 p-1 space-y-0.5">
+            <div className="h-1.5 bg-gray-700 w-3/4 rounded" />
+            <div className="h-1 bg-gray-200 w-full rounded" />
+          </div>
+          <div className="w-1/2 p-1 space-y-0.5">
+            <div className="h-1 bg-gray-200 w-full rounded" />
+            <div className="h-1 bg-gray-200 w-2/3 rounded" />
+          </div>
+        </div>
+        <div className="h-1.5 bg-gray-100 w-full" />
+        <div className="flex justify-end p-1">
+          <div className="h-2 bg-gray-800 w-12 rounded" />
+        </div>
+      </div>
+    ),
+  },
 ];
 
 // ─── Template Picker Modal ───────────────────────────────────────────
@@ -119,7 +143,7 @@ function TemplatePicker({
         className="absolute inset-0 bg-background/80 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative bg-card rounded-xl shadow-xl w-full max-w-lg mx-4 p-6 border border-border">
+      <div className="relative bg-card rounded-xl shadow-xl w-full max-w-2xl mx-4 p-6 border border-border">
         <div className="flex items-center justify-between mb-5">
           <div>
             <h2 className="text-sm font-semibold text-foreground">
@@ -136,7 +160,7 @@ function TemplatePicker({
             <X className="w-4 h-4" />
           </button>
         </div>
-        <div className="grid grid-cols-3 gap-3 mb-5">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
           {TEMPLATES.map((t) => (
             <button
               key={t.id}

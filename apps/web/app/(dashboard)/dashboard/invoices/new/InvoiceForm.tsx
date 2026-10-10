@@ -128,6 +128,25 @@ const TEMPLATES = [
       </div>
     ),
   },
+  {
+    id: "tax",
+    name: "Tax Invoice",
+    desc: "Formal GST invoice with bank block",
+    preview: (
+      <div className="w-full h-20 bg-background border border-foreground rounded overflow-hidden flex flex-col text-[7px]">
+        <div className="text-center font-bold py-0.5 border-b border-foreground">TAX INVOICE</div>
+        <div className="flex flex-1">
+          <div className="w-1/2 border-r border-border p-1 space-y-0.5">
+            <div className="h-1.5 bg-foreground/80 w-3/4 rounded" />
+            <div className="h-1 bg-muted w-full rounded" />
+          </div>
+          <div className="w-1/2 p-1">
+            <div className="h-1 bg-muted w-full rounded" />
+          </div>
+        </div>
+      </div>
+    ),
+  },
 ];
 
 // ------ Quick Add Customer Modal ------
@@ -659,7 +678,7 @@ export default function InvoiceForm({
                 <FileText className="w-4 h-4" />
                 Select Design Template
               </h3>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {TEMPLATES.map((t) => (
                   <button
                     key={t.id}

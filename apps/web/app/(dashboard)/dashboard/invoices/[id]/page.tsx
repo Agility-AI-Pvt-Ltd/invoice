@@ -7,8 +7,13 @@ import {
 } from 'lucide-react';
 import InvoiceActions from './InvoiceActions';
 import { formatInr, toRupees } from '@/lib/money';
+import { amountInWordsIndian } from '@/lib/amount-in-words';
 
 const fmt = (n: number | any) => formatInr(n, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtRs = (n: number | any) =>
+  toRupees(Number(n)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const panFromGstin = (gstin?: string | null) =>
+  gstin && gstin.length >= 12 ? gstin.substring(2, 12).toUpperCase() : null;
 
 function resolvedInvoiceTotal(invoice: {
   subTotal: number;
@@ -145,6 +150,7 @@ export default async function InvoiceViewPage({ params }: { params: Promise<{ id
           {template === 'modern' && <ModernTemplate invoice={invoice} isInterState={isInterState} />}
           {template === 'classic' && <ClassicTemplate invoice={invoice} isInterState={isInterState} />}
           {template === 'minimal' && <MinimalTemplate invoice={invoice} isInterState={isInterState} />}
+          {template === 'tax' && <TaxTemplate invoice={invoice} isInterState={isInterState} />}
 
           {/* Payment History (Attached at bottom) */}
           {invoice.payments.length > 0 && (
@@ -539,6 +545,163 @@ function MinimalTemplate({ invoice, isInterState }: any) {
             <span className="text-5xl font-black tracking-tighter text-slate-900 italic leading-none">{fmt(resolvedInvoiceTotal(invoice))}</span>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function TaxTemplate({ invoice, isInterState }: any) {
+  const taxableItems = invoice.items.filter((item: any) => Number(item.taxRate) > 0);
+  const reimbItems = invoice.items.filter((item: any) => Number(item.taxRate) === 0);
+  const lineItems = taxableItems.length ? taxableItems : invoice.items;
+  const lineBase = (item: any) =>
+    Number(item.quantity) * Number(item.unitPrice) - Number(item.discount || 0);
+  const taxableSubtotal = lineItems.reduce((s: number, item: any) => s + lineBase(item), 0);
+  const reimbTotal = reimbItems.reduce((s: number, item: any) => s + lineBase(item), 0);
+  const totalRupees = toRupees(resolvedInvoiceTotal(invoice));
+  const org = invoice.organization;
+
+  return (
+    <div className="p-8 text-[11px] text-black font-serif leading-snug">
+      <div className="border border-black">
+        <h1 className="text-center text-sm font-bold py-2 border-b border-black tracking-wide">TAX INVOICE</h1>
+
+        <div className="grid grid-cols-2 border-b border-black">
+          <div className="p-3 border-r border-black space-y-0.5">
+            <p className="font-bold text-xs uppercase">{org.name}</p>
+            {org.address && <p>{org.address}</p>}
+            {org.gstin && <p>GSTIN: {org.gstin}</p>}
+            {panFromGstin(org.gstin) && <p>PAN: {panFromGstin(org.gstin)}</p>}
+            {org.stateCode && <p>State: {org.stateCode}</p>}
+            {org.website && <p>Email: {org.website}</p>}
+          </div>
+          <div className="p-3 space-y-1">
+            <p><span className="font-bold inline-block w-32">Invoice No:</span>{invoice.invoiceNumber}</p>
+            <p><span className="font-bold inline-block w-32">Invoice Date:</span>{new Date(invoice.issueDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-')}</p>
+            {invoice.notes && <p><span className="font-bold inline-block w-32 align-top">Remarks:</span><span className="inline-block max-w-[240px]">{invoice.notes}</span></p>}
+            <p><span className="font-bold inline-block w-32">Place of Supply:</span>{invoice.placeOfSupply || invoice.customer.stateCode}</p>
+            <p><span className="font-bold inline-block w-32">Reverse Charge:</span>No</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 border-b border-black">
+          <div className="p-3 border-r border-black">
+            <p className="font-bold mb-1">Billed To:</p>
+            <p className="font-bold">{invoice.customer.name}</p>
+            <p>{invoice.billingAddress || invoice.customer.address}</p>
+            {invoice.customer.gstin && <p>GSTIN: {invoice.customer.gstin}</p>}
+            {invoice.customer.stateCode && <p>State: {invoice.customer.stateCode}</p>}
+            {invoice.customerDetails && <p>Attention: {invoice.customerDetails}</p>}
+          </div>
+          <div className="p-3" />
+        </div>
+
+        <div className="bg-neutral-200 border-b border-black px-2 py-1 font-bold text-[10px]">Professional Fees (Taxable)</div>
+        <table className="w-full text-[10px] border-collapse">
+          <thead>
+            <tr className="bg-neutral-100 border-b border-black">
+              <th className="p-1 w-8 text-center border-r border-neutral-300">Sr.</th>
+              <th className="p-1 text-left border-r border-neutral-300">Particulars</th>
+              <th className="p-1 w-20 text-center border-r border-neutral-300">SAC</th>
+              <th className="p-1 w-16 text-center border-r border-neutral-300">Days</th>
+              <th className="p-1 w-24 text-right border-r border-neutral-300">Per Day</th>
+              <th className="p-1 w-28 text-right">Total (Rs.)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lineItems.map((item: any, i: number) => (
+              <tr key={item.id} className="border-b border-neutral-200">
+                <td className="p-2 text-center align-top">{i + 1}</td>
+                <td className="p-2 align-top">{item.description}</td>
+                <td className="p-2 text-center align-top">{item.hsnCode || '—'}</td>
+                <td className="p-2 text-center align-top">{Number(item.quantity)}</td>
+                <td className="p-2 text-right align-top">{fmtRs(item.unitPrice)}</td>
+                <td className="p-2 text-right align-top">{fmtRs(lineBase(item))}</td>
+              </tr>
+            ))}
+            <tr className="font-bold border-t border-black">
+              <td colSpan={5} className="p-2 text-right">Total Professional Fees (Taxable Value)</td>
+              <td className="p-2 text-right">{fmtRs(taxableSubtotal || invoice.subTotal)}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        {reimbItems.length > 0 && (
+          <>
+            <div className="bg-neutral-200 border-y border-black px-2 py-1 font-bold text-[10px]">
+              Reimbursement of Out-of-Pocket Expenses (At Actuals — No GST)
+            </div>
+            <table className="w-full text-[10px] border-collapse">
+              <thead>
+                <tr className="bg-neutral-100 border-b border-black">
+                  <th className="p-1 w-8 text-center">Sr.</th>
+                  <th className="p-1 text-left">Particulars</th>
+                  <th className="p-1 w-24 text-center">Reference ID</th>
+                  <th className="p-1 w-20 text-center">Date</th>
+                  <th className="p-1 w-28 text-right">Amount (Rs.)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reimbItems.map((item: any, i: number) => (
+                  <tr key={item.id} className="border-b border-neutral-200">
+                    <td className="p-2 text-center">{i + 1}</td>
+                    <td className="p-2">{item.description}</td>
+                    <td className="p-2 text-center">{item.hsnCode || '—'}</td>
+                    <td className="p-2 text-center">—</td>
+                    <td className="p-2 text-right">{fmtRs(lineBase(item))}</td>
+                  </tr>
+                ))}
+                <tr className="font-bold border-t border-black">
+                  <td colSpan={4} className="p-2 text-right">Total Reimbursement</td>
+                  <td className="p-2 text-right">{fmtRs(reimbTotal)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </>
+        )}
+
+        <div className="grid grid-cols-[58%_42%] border-t border-black">
+          <div className="p-3 border-r border-black space-y-1">
+            <p className="font-bold">Bank Account Details</p>
+            <p>Account Name: {org.name}</p>
+            {org.bankName && <p>Bank Name: {org.bankName}</p>}
+            {org.bankAccount && <p>A/c No: {org.bankAccount}</p>}
+            {org.bankIfsc && <p>IFSC: {org.bankIfsc}</p>}
+            <p className="pt-2">Payment Mode: Bank Transfer (NEFT / RTGS)</p>
+            <p className="pt-2 font-bold">Amount (In Words): {amountInWordsIndian(totalRupees)}</p>
+          </div>
+          <div className="p-3 space-y-1">
+            <div className="flex justify-between"><span>Taxable Value</span><span>{fmtRs(invoice.subTotal)}</span></div>
+            {isInterState ? (
+              <div className="flex justify-between"><span>IGST</span><span>{fmtRs(invoice.igstTotal)}</span></div>
+            ) : (
+              <>
+                <div className="flex justify-between"><span>CGST</span><span>{fmtRs(invoice.cgstTotal)}</span></div>
+                <div className="flex justify-between"><span>SGST</span><span>{fmtRs(invoice.sgstTotal)}</span></div>
+              </>
+            )}
+            <div className="flex justify-between border-t border-neutral-400 pt-1 font-bold">
+              <span>Subtotal</span>
+              <span>{fmtRs(Number(invoice.subTotal) + Number(invoice.cgstTotal) + Number(invoice.sgstTotal) + Number(invoice.igstTotal))}</span>
+            </div>
+            {reimbTotal > 0 && (
+              <div className="flex justify-between"><span>Add: Reimbursement</span><span>{fmtRs(reimbTotal)}</span></div>
+            )}
+            <div className="flex justify-between font-bold text-xs pt-2">
+              <span>Grand Total</span>
+              <span>{fmtRs(resolvedInvoiceTotal(invoice))}</span>
+            </div>
+            <div className="pt-8 text-right">
+              <p className="font-bold">For {org.name}</p>
+              <p className="mt-10 text-[10px]">Authorised Signatory</p>
+            </div>
+          </div>
+        </div>
+
+        <p className="text-[9px] italic p-2 border-t border-black leading-relaxed">
+          Declaration: We declare that this invoice shows the actual price of the services described and that all
+          particulars are true and correct. This is a computer-generated invoice.
+        </p>
       </div>
     </div>
   );

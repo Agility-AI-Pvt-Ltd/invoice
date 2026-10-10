@@ -377,6 +377,7 @@ export default async function SettingsPage({
                       <option value="modern">Modern (Dark Header)</option>
                       <option value="classic">Classic (Traditional)</option>
                       <option value="minimal">Minimal (Clean)</option>
+                      <option value="tax">Tax Invoice (Formal GST)</option>
                     </select>
                   </Field>
                 </div>
